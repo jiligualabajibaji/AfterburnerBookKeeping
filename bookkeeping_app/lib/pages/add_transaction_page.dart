@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../database/database.dart';
 import '../database/models.dart';
@@ -202,7 +201,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     }
     final amountVal = _calcExpression(_amountCtrl.text);
     if (amountVal == null) {
-      _showTopSnack('金额必须为数字、算式或中文数字（如 100+50、一百三十六）');
+      _showTopSnack('金额必须为数字或算式（如 100+50）');
       return;
     }
     if (amountVal < 0) {
@@ -285,8 +284,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                 child: TextField(
                   controller: _amountCtrl,
                   focusNode: _amountFocus,
-                  keyboardType: TextInputType.text,
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.+\-一两三四五六七八九十百千万亿零两块元毛角分]'))],
+                  keyboardType: TextInputType.number,
                   textInputAction: TextInputAction.next,
                   onSubmitted: (_) => FocusScope.of(context).requestFocus(_noteFocus),
                   decoration: InputDecoration(

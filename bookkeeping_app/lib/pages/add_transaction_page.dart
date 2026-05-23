@@ -18,6 +18,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   final _amountFocus = FocusNode();
   final _noteFocus = FocusNode();
   bool _isExpense = true;
+  bool _amountFocusedBeforeTap = false;
+  bool _noteFocusedBeforeTap = false;
+  bool _keyboardResetting = false;
   int? _categoryId;
   DateTime _selectedDate = DateTime.now();
   bool _showTime = false;
@@ -266,7 +269,12 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               ),
           ],
         ),
-        body: SingleChildScrollView(
+        body: Listener(
+          onPointerDown: (_) {
+            _amountFocusedBeforeTap = _amountFocus.hasFocus;
+            _noteFocusedBeforeTap = _noteFocus.hasFocus;
+          },
+          child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // 支出/收入切换 + 金额
@@ -292,6 +300,16 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   onSubmitted: (_) {
                     _amountFocus.unfocus();
                     Future.delayed(const Duration(milliseconds: 50), () => _noteFocus.requestFocus());
+                  },
+                  onTap: () {
+                    if (_noteFocusedBeforeTap && !_keyboardResetting) {
+                      _keyboardResetting = true;
+                      _amountFocus.unfocus();
+                      Future.delayed(const Duration(milliseconds: 50), () {
+                        if (mounted) _amountFocus.requestFocus();
+                        _keyboardResetting = false;
+                      });
+                    }
                   },
                   decoration: InputDecoration(
                     labelText: '金额', prefixText: '¥ ',
@@ -372,6 +390,16 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               keyboardType: TextInputType.text,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _save(),
+              onTap: () {
+                if (_amountFocusedBeforeTap && !_keyboardResetting) {
+                  _keyboardResetting = true;
+                  _noteFocus.unfocus();
+                  Future.delayed(const Duration(milliseconds: 50), () {
+                    if (mounted) _noteFocus.requestFocus();
+                    _keyboardResetting = false;
+                  });
+                }
+              },
               decoration: InputDecoration(
                 hintText: '可选', filled: true, fillColor: color.withAlpha(15),
                 focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: color)),
@@ -395,6 +423,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
           ]),
         ),
+      ),
       ),
     );
   }

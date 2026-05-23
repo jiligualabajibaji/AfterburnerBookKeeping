@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub/
+build/
+*.iml
+.flutter-plugins
+.flutter-plugins-dependencies
+*.lock
+
+# Android
+android/.gradle/
+android/app/build/
+android/local.properties
+*.apk
+*.aab
+*.keystore
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/build/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/*.xcworkspace
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+docs/暂存/

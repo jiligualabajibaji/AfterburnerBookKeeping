@@ -255,6 +255,11 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 4),
+            child: Text('点击年月切换 · 左右滑动 · 点击记录编辑',
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
+          ),
           _buildSummary(month),
           const Divider(height: 1),
           Expanded(child: _buildList(month)),

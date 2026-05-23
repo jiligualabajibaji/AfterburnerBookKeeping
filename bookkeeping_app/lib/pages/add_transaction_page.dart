@@ -286,7 +286,10 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   focusNode: _amountFocus,
                   keyboardType: TextInputType.number,
                   textInputAction: TextInputAction.next,
-                  onSubmitted: (_) => FocusScope.of(context).requestFocus(_noteFocus),
+                  onSubmitted: (_) {
+                    _amountFocus.unfocus();
+                    Future.delayed(const Duration(milliseconds: 100), () => _noteFocus.requestFocus());
+                  },
                   decoration: InputDecoration(
                     labelText: '金额', prefixText: '¥ ',
                     filled: true, fillColor: color.withAlpha(15),
@@ -294,7 +297,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       borderSide: BorderSide(color: color),
                     ),
                   ),
-                  autofocus: true,
                 ),
               ),
             ]),

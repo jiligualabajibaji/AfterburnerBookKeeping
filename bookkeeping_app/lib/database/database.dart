@@ -141,7 +141,7 @@ class AppDatabase {
         FROM transactions t
         JOIN categories c ON t.category_id = c.id
         WHERE t.timestamp BETWEEN ? AND ?
-        ORDER BY t.timestamp DESC
+        ORDER BY t.timestamp DESC, t.id DESC
       ''', [firstTs, lastTs]);
 
       return rows.map((r) {
@@ -167,7 +167,7 @@ class AppDatabase {
         SELECT t.*, c.name as cat_name, c.type as cat_type, c.sort_order
         FROM transactions t
         JOIN categories c ON t.category_id = c.id
-        ORDER BY t.timestamp DESC
+        ORDER BY t.timestamp DESC, t.id DESC
       ''');
       return rows.map((r) {
         return TransactionWithCategory(ExpenseRecord.fromMap(r), Category(
@@ -191,7 +191,7 @@ class AppDatabase {
         FROM transactions t
         JOIN categories c ON t.category_id = c.id
         WHERE t.timestamp BETWEEN ? AND ?
-        ORDER BY t.timestamp DESC
+        ORDER BY t.timestamp DESC, t.id DESC
       ''', [firstTs, lastTs]);
       return rows.map((r) {
         return TransactionWithCategory(ExpenseRecord.fromMap(r), Category(

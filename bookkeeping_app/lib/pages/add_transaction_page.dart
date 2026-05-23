@@ -235,8 +235,10 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       _selectedDate = DateTime.now();
       _showTime = false;
       // Keep the same category and expense/income selection
+      _amountFocus.unfocus();
+      _noteFocus.unfocus();
       setState(() {});
-      Future.microtask(() => _amountFocus.requestFocus());
+      Future.delayed(const Duration(milliseconds: 50), () => _amountFocus.requestFocus());
     } else if (mounted) {
       Navigator.pop(context);
     }
@@ -289,7 +291,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   textInputAction: TextInputAction.next,
                   onSubmitted: (_) {
                     _amountFocus.unfocus();
-                    Future.delayed(const Duration(milliseconds: 100), () => _noteFocus.requestFocus());
+                    Future.delayed(const Duration(milliseconds: 50), () => _noteFocus.requestFocus());
                   },
                   decoration: InputDecoration(
                     labelText: '金额', prefixText: '¥ ',

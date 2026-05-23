@@ -236,6 +236,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       _showTime = false;
       // Keep the same category and expense/income selection
       setState(() {});
+      Future.microtask(() => _amountFocus.requestFocus());
     } else if (mounted) {
       Navigator.pop(context);
     }

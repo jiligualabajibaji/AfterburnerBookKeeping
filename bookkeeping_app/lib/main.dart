@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show PlatformDispatcher;
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'database/database.dart';
 import 'services/settings_service.dart';
+import 'services/translations.dart';
 import 'pages/home_page.dart';
 
 void main() {
@@ -66,6 +68,17 @@ class _BookkeepingAppState extends State<BookkeepingApp> {
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),
       themeMode: themeMode,
+      locale: _settings == null ? const Locale('zh') : Locale(_settings!.language),
+      localizationsDelegates: const [
+        AppTranslationsDelegate(),
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('zh', 'CN'),
+        Locale('en', 'US'),
+      ],
       home: _ready
         ? HomePage(db: _db!, settings: _settings!, onThemeChanged: _onThemeChanged, appName: _settings!.appName)
         : const Scaffold(

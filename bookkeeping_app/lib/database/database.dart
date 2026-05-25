@@ -19,18 +19,32 @@ class AppDatabase {
     final path = p.join(dir.path, 'bookkeeping.db');
     return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onUpgrade: (db, oldV, newV) async {
         if (oldV < 2) {
           // Remove duplicate "其他" category, reassign to "其他支出"
           await db.delete('categories', where: 'name = ? AND type = ?', whereArgs: ['其他', 'expense']);
+        }
+        if (oldV < 3) {
+          // Remove UNIQUE constraint on name to allow same name across types
+          await db.execute('ALTER TABLE categories RENAME TO categories_old');
+          await db.execute('''
+            CREATE TABLE categories (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              type TEXT NOT NULL DEFAULT 'expense',
+              sort_order INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+          await db.execute('INSERT INTO categories SELECT * FROM categories_old');
+          await db.execute('DROP TABLE categories_old');
         }
       },
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
             type TEXT NOT NULL DEFAULT 'expense',
             sort_order INTEGER NOT NULL DEFAULT 0
           )
@@ -84,7 +98,7 @@ class AppDatabase {
     final db = await database;
     // Find or create fallback category
     final fallback = await db.query('categories',
-      where: 'name = ?', whereArgs: ['其他支出']);
+      where: 'name = ? AND type = ?', whereArgs: ['其他支出', 'expense']);
     final fallbackId = fallback.isNotEmpty ? fallback.first['id'] as int
         : await db.insert('categories', {'name': '其他', 'type': 'expense', 'sort_order': 0});
     // Reassign transactions to fallback
@@ -201,6 +215,50 @@ class AppDatabase {
       }).toList();
     } catch (e) {
       debugPrint('transactionsInYear 错误: $e');
+      return [];
+    }
+  }
+
+  Future<List<TransactionWithCategory>> searchTransactions(
+    String keyword, {
+    DateTime? startDate,
+    DateTime? endDate,
+    String? type,
+  }) async {
+    try {
+      final db = await database;
+      final pattern = '%$keyword%';
+      final conditions = <String>['(t.note LIKE ? OR c.name LIKE ?)'];
+      final args = <dynamic>[pattern, pattern];
+
+      if (startDate != null) {
+        conditions.add('t.timestamp >= ?');
+        args.add(startDate.millisecondsSinceEpoch ~/ 1000);
+      }
+      if (endDate != null) {
+        conditions.add('t.timestamp <= ?');
+        args.add(endDate.millisecondsSinceEpoch ~/ 1000);
+      }
+      if (type != null) {
+        conditions.add('c.type = ?');
+        args.add(type);
+      }
+
+      final rows = await db.rawQuery('''
+        SELECT t.*, c.name as cat_name, c.type as cat_type, c.sort_order
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY t.timestamp DESC, t.id DESC
+      ''', args);
+      return rows.map((r) {
+        return TransactionWithCategory(ExpenseRecord.fromMap(r), Category(
+          id: r['category_id'] as int, name: r['cat_name'] as String,
+          type: r['cat_type'] as String, sortOrder: r['sort_order'] as int? ?? 0,
+        ));
+      }).toList();
+    } catch (e) {
+      debugPrint('searchTransactions 错误: $e');
       return [];
     }
   }

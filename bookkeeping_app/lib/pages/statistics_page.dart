@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import '../services/translations.dart';
 import '../database/database.dart';
 
 class StatisticsPage extends StatefulWidget {
@@ -16,13 +17,15 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTranslations.of(context);
+    final loc = Localizations.localeOf(context).toString();
     return SafeArea(
       child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          ChoiceChip(label: const Text('月'), selected: !_showYear,
+          ChoiceChip(label: Text(t.tr('stats.month')), selected: !_showYear,
             onSelected: (_) => setState(() => _showYear = false)),
           const SizedBox(width: 8),
-          ChoiceChip(label: const Text('年'), selected: _showYear,
+          ChoiceChip(label: Text(t.tr('stats.year')), selected: _showYear,
             onSelected: (_) => setState(() => _showYear = true)),
         ]),
         Padding(
@@ -38,7 +41,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   final picked = await showDialog<int>(
                     context: context,
                     builder: (ctx) => AlertDialog(
-                      title: const Text('选择年份'),
+                      title: Text(t.tr('common.select_year')),
                       content: SizedBox(
                         width: 280, height: 300,
                         child: YearPicker(
@@ -55,7 +58,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   final pickedYear = await showDialog<int>(
                     context: context,
                     builder: (ctx) => AlertDialog(
-                      title: const Text('选择年份'),
+                      title: Text(t.tr('common.select_year')),
                       content: SizedBox(
                         width: 280, height: 300,
                         child: YearPicker(
@@ -71,7 +74,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   final pickedMonth = await showDialog<int>(
                     context: context,
                     builder: (ctx) => AlertDialog(
-                      title: Text('${pickedYear}年'),
+                      title: Text(t.tr('common.year_title', {'year': '$pickedYear'})),
                       content: SizedBox(
                         width: 280,
                         child: GridView.count(
@@ -88,7 +91,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                                 elevation: 0,
                               ),
                               onPressed: () => Navigator.pop(ctx, m),
-                              child: Text('${m}月'),
+                              child: Text(DateFormat.MMM(loc).format(DateTime(2024, m, 1))),
                             );
                           }),
                         ),
@@ -99,7 +102,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 }
               },
               child: Text(
-                _showYear ? '${_date.year}年' : DateFormat('yyyy年M月', 'zh_CN').format(_date),
+                _showYear ? '${_date.year}' : DateFormat.yMMMM(loc).format(_date),
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
             IconButton(icon: const Icon(Icons.chevron_right),
@@ -109,10 +112,12 @@ class _StatisticsPageState extends State<StatisticsPage> {
           ]),
         ),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          ChoiceChip(label: const Text('支出'), selected: _showExpense,
+          ChoiceChip(label: Text(t.tr('stats.expense')), selected: _showExpense,
+            selectedColor: Colors.red.withAlpha(40),
             onSelected: (_) => setState(() => _showExpense = true)),
           const SizedBox(width: 12),
-          ChoiceChip(label: const Text('收入'), selected: !_showExpense,
+          ChoiceChip(label: Text(t.tr('stats.income')), selected: !_showExpense,
+            selectedColor: Colors.green.withAlpha(40),
             onSelected: (_) => setState(() => _showExpense = false)),
         ]),
         const SizedBox(height: 8),
@@ -126,11 +131,11 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 .where((e) => _showExpense ? e.value < 0 : e.value > 0)
                 .toList();
               if (items.isEmpty) {
-                return Center(child: Text(_showExpense ? '暂无支出' : '暂无收入'));
+                return Center(child: Text(_showExpense ? t.tr('stats.no_expense') : t.tr('stats.no_income')));
               }
               final total = items.fold(0.0, (sum, e) => sum + e.value.abs());
               if (total == 0) {
-                return Center(child: Text(_showExpense ? '暂无支出' : '暂无收入'));
+                return Center(child: Text(_showExpense ? t.tr('stats.no_expense') : t.tr('stats.no_income')));
               }
               final colors = _showExpense
                 ? [Colors.red, Colors.deepOrange, Colors.orange, Colors.amber,
@@ -141,7 +146,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 Padding(
                   padding: const EdgeInsets.all(8),
                   child: Text(
-                    '${_showYear ? _date.year : DateFormat('M月', 'zh_CN').format(_date)} ${_showExpense ? '支出' : '收入'} 合计: ¥${total.toStringAsFixed(2)}',
+                    '${_showYear ? _date.year : DateFormat.MMM(loc).format(_date)} ${_showExpense ? t.tr('stats.expense') : t.tr('stats.income')}: ¥${total.toStringAsFixed(2)}',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
                 Expanded(

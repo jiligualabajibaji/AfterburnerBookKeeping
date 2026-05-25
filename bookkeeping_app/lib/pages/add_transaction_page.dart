@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/database.dart';
 import '../database/models.dart';
+import '../services/translations.dart';
 
 class AddTransactionPage extends StatefulWidget {
   final AppDatabase db;
@@ -198,21 +199,22 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   }
 
   Future<void> _save({bool stay = false}) async {
+    final s = AppTranslations.of(context);
     if (_amountCtrl.text.isEmpty) {
-      _showTopSnack('请填写金额');
+      _showTopSnack(s.tr('add.error_amount_empty'));
       return;
     }
     final amountVal = _calcExpression(_amountCtrl.text);
     if (amountVal == null) {
-      _showTopSnack('金额必须为数字或算式（如 100+50）');
+      _showTopSnack(s.tr('add.error_amount_invalid'));
       return;
     }
     if (amountVal < 0) {
-      _showTopSnack('金额不能小于0');
+      _showTopSnack(s.tr('add.error_amount_negative'));
       return;
     }
     if (_categoryId == null) {
-      _showTopSnack('请选择分类');
+      _showTopSnack(s.tr('add.error_no_category'));
       return;
     }
     final amount = double.parse(amountVal.toStringAsFixed(2));
@@ -249,6 +251,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTranslations.of(context);
     final color = _themeColor;
     return Theme(
       data: Theme.of(context).copyWith(
@@ -259,11 +262,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       ),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('记一笔'),
+          title: Text(t.tr('add.title')),
           actions: [
             FilledButton.icon(
                 icon: const Icon(Icons.add_circle_outline, size: 16),
-                label: const Text('再记一笔'),
+                label: Text(t.tr('add.add_another')),
                 style: FilledButton.styleFrom(backgroundColor: color),
                 onPressed: () => _save(stay: true),
               ),
@@ -279,13 +282,13 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // 支出/收入切换 + 金额
             Row(children: [
-              ChoiceChip(label: const Text('支出'), selected: _isExpense,
+              ChoiceChip(label: Text(t.tr('add.expense')), selected: _isExpense,
                 selectedColor: Colors.red.withAlpha(40),
                 onSelected: (_) => setState(() {
                   _isExpense = true; _categoryId = _filteredCats.firstOrNull?.id;
                 })),
               const SizedBox(width: 8),
-              ChoiceChip(label: const Text('收入'), selected: !_isExpense,
+              ChoiceChip(label: Text(t.tr('add.income')), selected: !_isExpense,
                 selectedColor: Colors.green.withAlpha(40),
                 onSelected: (_) => setState(() {
                   _isExpense = false; _categoryId = _filteredCats.firstOrNull?.id;
@@ -312,7 +315,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                     }
                   },
                   decoration: InputDecoration(
-                    labelText: '金额', prefixText: '¥ ',
+                    labelText: t.tr('add.amount'), prefixText: '¥ ',
                     filled: true, fillColor: color.withAlpha(15),
                     focusedBorder: OutlineInputBorder(
                       borderSide: BorderSide(color: color),
@@ -323,11 +326,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             ]),
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 4),
-              child: Text('支持算式和中文数字，如 100+50、一百三十六', style: TextStyle(color: color.withAlpha(150), fontSize: 12)),
+              child: Text(t.tr('add.amount_hint'), style: TextStyle(color: color.withAlpha(150), fontSize: 12)),
             ),
             const SizedBox(height: 16),
 
-            Text('选择分类', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            Text(t.tr('add.select_category'), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             _allCats.isEmpty
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
@@ -338,7 +341,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   ]),
             const SizedBox(height: 20),
 
-            Text('日期', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            Text(t.tr('add.date'), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
@@ -382,7 +385,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             ]),
             const SizedBox(height: 20),
 
-            Text('备注', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            Text(t.tr('add.note'), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             TextField(
               controller: _noteCtrl,
@@ -401,7 +404,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                 }
               },
               decoration: InputDecoration(
-                hintText: '可选', filled: true, fillColor: color.withAlpha(15),
+                hintText: t.tr('add.note_hint'), filled: true, fillColor: color.withAlpha(15),
                 focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: color)),
               ),
             ),
@@ -412,7 +415,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               width: double.infinity,
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.save, size: 18),
-                label: const Text('保存并返回'),
+                label: Text(t.tr('add.save_return')),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: color, side: BorderSide(color: color),
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -430,14 +433,15 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
   Future<void> _addCategory() async {
     final controller = TextEditingController();
+    final s = AppTranslations.of(context);
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('添加${_isExpense ? '支出' : '收入'}分类'),
-        content: TextField(controller: controller, decoration: const InputDecoration(labelText: '分类名称', hintText: '输入新分类名称')),
+        title: Text(s.tr('add.add_category_title', {'type': s.tr(_isExpense ? 'category.type_expense' : 'category.type_income')})),
+        content: TextField(controller: controller, decoration: InputDecoration(labelText: s.tr('add.category_name'), hintText: s.tr('add.category_hint'))),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('添加')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.tr('home.cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: Text(s.tr('add.confirm_add'))),
         ],
       ),
     );

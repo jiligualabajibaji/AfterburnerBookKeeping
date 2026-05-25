@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/ai_bridge.dart';
+import '../services/translations.dart';
 
 class ConfirmDialog extends StatefulWidget {
   final AiParseResult result;
@@ -47,20 +48,21 @@ class _ConfirmDialogState extends State<ConfirmDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTranslations.of(context);
     const allCategories = ['餐饮','交通','购物','娱乐','住房','医疗','其他支出','工资收入','其他收入'];
 
     return AlertDialog(
-      title: const Text('确认记账'),
+      title: Text(t.tr('dialog.save')),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(
           controller: _amountCtrl,
-          decoration: const InputDecoration(labelText: '金额', hintText: '请输入金额'),
+          decoration: InputDecoration(labelText: t.tr('dialog.amount'), hintText: t.tr('dialog.amount')),
           keyboardType: TextInputType.number,
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           value: allCategories.contains(_category) ? _category : null,
-          decoration: const InputDecoration(labelText: '分类'),
+          decoration: InputDecoration(labelText: t.tr('dialog.category')),
           items: allCategories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
           onChanged: (v) => _category = v,
         ),
@@ -68,7 +70,7 @@ class _ConfirmDialogState extends State<ConfirmDialog> {
         TextField(
           controller: _dateCtrl,
           readOnly: true,
-          decoration: const InputDecoration(labelText: '日期', suffixIcon: Icon(Icons.date_range)),
+          decoration: InputDecoration(labelText: t.tr('dialog.date'), suffixIcon: const Icon(Icons.date_range)),
           onTap: () async {
             final picked = await showDatePicker(
               context: context,
@@ -87,11 +89,11 @@ class _ConfirmDialogState extends State<ConfirmDialog> {
         const SizedBox(height: 8),
         TextField(
           controller: _noteCtrl,
-          decoration: const InputDecoration(labelText: '备注'),
+          decoration: InputDecoration(labelText: t.tr('dialog.note')),
         ),
       ]),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(t.tr('home.cancel'))),
         FilledButton(onPressed: () {
           widget.onConfirm({
             'amount': double.tryParse(_amountCtrl.text) ?? widget.result.amount,
@@ -100,7 +102,7 @@ class _ConfirmDialogState extends State<ConfirmDialog> {
             'note': _noteCtrl.text,
           });
           Navigator.pop(context);
-        }, child: const Text('保存')),
+        }, child: Text(t.tr('dialog.save'))),
       ],
     );
   }

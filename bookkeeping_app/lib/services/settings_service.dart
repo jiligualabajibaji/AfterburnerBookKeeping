@@ -14,6 +14,7 @@ class SettingsService {
   static const _bgImage = 'background_image';
   static const _iconList = 'icon_list';
   static const _currentIcon = 'current_icon';
+  static const _language = 'language';
   static const int maxIcons = 10;
   static const int maxApiConfigs = 10;
 
@@ -32,6 +33,9 @@ class SettingsService {
 
   String get fontSize => _prefs.getString(_fontSize) ?? 'medium';
   set fontSize(String v) => _prefs.setString(_fontSize, v);
+
+  String get language => _prefs.getString(_language) ?? 'zh';
+  set language(String v) => _prefs.setString(_language, v);
 
   String get apiKey => _prefs.getString(_apiKey) ?? '';
   set apiKey(String v) => _prefs.setString(_apiKey, v);

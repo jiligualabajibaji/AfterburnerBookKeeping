@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/database.dart';
 import '../services/settings_service.dart';
+import '../services/translations.dart';
 import '../widgets/transaction_tile.dart';
 import 'add_transaction_page.dart';
 import 'ai_input_page.dart';
 import 'statistics_page.dart';
+import 'search_page.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -61,17 +63,18 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _confirmDeleteSelected() async {
     if (_selectedIds.isEmpty) return;
+    final t2 = AppTranslations.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('确认删除 ${_selectedIds.length} 条记录'),
+        title: Text(t2.tr('home.confirm_delete_title', {'n': '${_selectedIds.length}'})),
         content: SizedBox(
           width: double.maxFinite,
-          child: Text('确定要删除选中的 ${_selectedIds.length} 条记录吗？\n此操作不可撤销。'),
+          child: Text(t2.tr('home.confirm_delete_body', {'n': '${_selectedIds.length}'})),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认删除')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t2.tr('home.cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(t2.tr('home.confirm_delete'))),
         ],
       ),
     );
@@ -85,6 +88,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTranslations.of(context);
     final bgPath = widget.settings.backgroundImagePath;
     return Scaffold(
       body: Container(
@@ -96,19 +100,21 @@ class _HomePageState extends State<HomePage> {
         children: [
           _buildSwipeableTransactions(),
           StatisticsPage(db: widget.db),
+          SearchPage(db: widget.db),
           SettingsPage(key: ValueKey('settings$_openApiSettings'), db: widget.db, settings: widget.settings, onThemeChanged: widget.onThemeChanged, apiExpanded: _openApiSettings),
         ],
       ),
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _tab,
-        onTap: (i) => setState(() { _tab = i; if (i != 2) _openApiSettings = false; }),
+        onTap: (i) => setState(() { _tab = i; if (i != 3) _openApiSettings = false; }),
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.teal,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: '流水'),
-          BottomNavigationBarItem(icon: Icon(Icons.pie_chart), label: '统计'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: '设置'),
+        items: [
+          BottomNavigationBarItem(icon: const Icon(Icons.receipt_long), label: t.tr('tab.transactions')),
+          BottomNavigationBarItem(icon: const Icon(Icons.pie_chart), label: t.tr('tab.stats')),
+          BottomNavigationBarItem(icon: const Icon(Icons.search), label: t.tr('tab.search')),
+          BottomNavigationBarItem(icon: const Icon(Icons.settings), label: t.tr('tab.settings')),
         ],
       ),
       floatingActionButton: _tab == 0 ? Column(
@@ -147,6 +153,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildTransactionsForMonth(DateTime month) {
+    final t = AppTranslations.of(context);
+    final loc = Localizations.localeOf(context).toString();
     return SafeArea(
       child: Column(
         children: [
@@ -162,7 +170,7 @@ class _HomePageState extends State<HomePage> {
                     final pickedYear = await showDialog<int>(
                       context: context,
                       builder: (ctx) => AlertDialog(
-                        title: const Text('选择年份'),
+                        title: Text(t.tr('common.select_year')),
                         content: SizedBox(
                           width: 280, height: 300,
                           child: YearPicker(
@@ -178,7 +186,7 @@ class _HomePageState extends State<HomePage> {
                     final pickedMonth = await showDialog<int>(
                       context: context,
                       builder: (ctx) => AlertDialog(
-                        title: Text('${pickedYear}年'),
+                        title: Text(t.tr('common.year_title', {'year': '$pickedYear'})),
                         content: SizedBox(
                           width: 280,
                           child: GridView.count(
@@ -194,7 +202,7 @@ class _HomePageState extends State<HomePage> {
                                     ? Colors.white : Colors.black87,
                                 ),
                                 onPressed: () => Navigator.pop(ctx, m),
-                                child: Text('${m}月'),
+                                child: Text(DateFormat.MMM(loc).format(DateTime(2024, m, 1))),
                               );
                             }),
                           ),
@@ -206,7 +214,7 @@ class _HomePageState extends State<HomePage> {
                       _pageCtrl.jumpToPage(targetPage);
                     }
                   },
-                  child: Text(DateFormat('yyyy年M月', 'zh_CN').format(month),
+                  child: Text(DateFormat.yMMMM(loc).format(month),
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
                 IconButton(icon: const Icon(Icons.chevron_right),
@@ -216,7 +224,7 @@ class _HomePageState extends State<HomePage> {
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     PopupMenuButton<String>(
                       icon: const Icon(Icons.select_all, size: 20),
-                      tooltip: '全选',
+                      tooltip: t.tr('home.select_all'),
                       onSelected: (v) async {
                         final txns = await widget.db.transactionsInMonth(_month);
                         setState(() {
@@ -231,23 +239,23 @@ class _HomePageState extends State<HomePage> {
                         });
                       },
                       itemBuilder: (_) => [
-                        const PopupMenuItem(value: 'all', child: Text('全选本月')),
-                        const PopupMenuItem(value: 'expense', child: Text('全选本月支出')),
-                        const PopupMenuItem(value: 'income', child: Text('全选本月收入')),
+                        PopupMenuItem(value: 'all', child: Text(t.tr('home.select_month'))),
+                        PopupMenuItem(value: 'expense', child: Text(t.tr('home.select_expense'))),
+                        PopupMenuItem(value: 'income', child: Text(t.tr('home.select_income'))),
                       ],
                     ),
                     IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: _confirmDeleteSelected),
-                    TextButton(onPressed: () { _selectedIds.clear(); _selecting = false; setState(() {}); }, child: const Text('取消')),
+                    TextButton(onPressed: () { _selectedIds.clear(); _selecting = false; setState(() {}); }, child: Text(t.tr('home.cancel_select'))),
                   ]),
                 if (!_selectMode)
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red),
-                      onPressed: () => setState(() => _selecting = true), tooltip: '批量删除'),
+                      onPressed: () => setState(() => _selecting = true), tooltip: t.tr('home.batch_delete')),
                     IconButton(icon: const Icon(Icons.record_voice_over),
                       onPressed: () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => AiInputPage(
                           db: widget.db,
-                          onRequestSettings: () { _tab = 2; _openApiSettings = true; },
+                          onRequestSettings: () { _tab = 3; _openApiSettings = true; },
                         )))
                           .then((_) => setState(() {})),
                     ),
@@ -257,7 +265,7 @@ class _HomePageState extends State<HomePage> {
           ),
           Padding(
             padding: const EdgeInsets.only(left: 16, bottom: 4),
-            child: Text('点击年月切换 · 左右滑动 · 点击记录编辑',
+            child: Text(t.tr('home.hint'),
               style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
           ),
           _buildSummary(month),
@@ -269,6 +277,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildSummary(DateTime month) {
+    final t = AppTranslations.of(context);
+    final loc = Localizations.localeOf(context).toString();
     return FutureBuilder<Map<String, double>>(
       future: widget.db.monthlySummary(month),
       builder: (_, snap) {
@@ -281,10 +291,10 @@ class _HomePageState extends State<HomePage> {
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(children: [
-            Text('支出: ¥${expense.abs().toStringAsFixed(2)}',
+            Text('${t.tr('home.expense')}: ¥${expense.abs().toStringAsFixed(2)}',
               style: const TextStyle(color: Colors.red, fontSize: 15)),
             const SizedBox(width: 16),
-            Text('收入: ¥${income.toStringAsFixed(2)}',
+            Text('${t.tr('home.income')}: ¥${income.toStringAsFixed(2)}',
               style: const TextStyle(color: Colors.green, fontSize: 15)),
           ]),
         );
@@ -293,12 +303,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildList(DateTime month) {
+    final t = AppTranslations.of(context);
+    final loc = Localizations.localeOf(context).toString();
     return FutureBuilder<List<TransactionWithCategory>>(
       future: widget.db.transactionsInMonth(month),
       builder: (_, snap) {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
         final txns = snap.data!;
-        if (txns.isEmpty) return const Center(child: Text('暂无记录'));
+        if (txns.isEmpty) return Center(child: Text(t.tr('home.no_records')));
         // Group by date
         final grouped = <String, List<TransactionWithCategory>>{};
         for (final t in txns) {
@@ -313,7 +325,7 @@ class _HomePageState extends State<HomePage> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                 child: Row(children: [
-                  Text(DateFormat('M月d日 EEEE', 'zh_CN').format(date),
+                  Text('${DateFormat.MMMd(loc).format(date)} ${DateFormat.EEEE(loc).format(date)}',
                     style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600)),
                   if (_selectMode)
                     Checkbox(

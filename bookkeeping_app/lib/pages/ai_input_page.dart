@@ -5,6 +5,7 @@ import '../database/database.dart';
 import '../database/models.dart';
 import '../services/ai_bridge.dart';
 import '../services/settings_service.dart';
+import '../services/translations.dart';
 import '../widgets/confirm_dialog.dart';
 
 class AiInputPage extends StatefulWidget {
@@ -66,14 +67,15 @@ class _AiInputPageState extends State<AiInputPage> {
   Future<void> _parseAi() async {
     if (_textCtrl.text.trim().isEmpty) { _showTopSnack('请先输入记账内容'); return; }
     if (_settings.apiKey.isEmpty) {
+      final at = AppTranslations.of(context);
       final go = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('未配置 API'),
-          content: const Text('大模型解析需要在设置中填写 API Key 和接口地址。是否前往设置？'),
+          title: Text(at.tr('ai.no_api_title')),
+          content: Text(at.tr('ai.no_api_body')),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('去设置')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(at.tr('ai.cancel'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(at.tr('ai.no_api_go'))),
           ],
         ),
       );
@@ -145,39 +147,38 @@ class _AiInputPageState extends State<AiInputPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTranslations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('AI 记账')),
+      appBar: AppBar(title: Text(t.tr('ai.title'))),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(children: [
           TextField(
             controller: _textCtrl,
             maxLines: 3,
-            decoration: const InputDecoration(
-              hintText: '描述你的花销，例如：今天中午吃饭花了38',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              hintText: t.tr('ai.hint'),
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 16),
 
-          // 规则解析按钮
           SizedBox(
             width: double.infinity,
             child: _loading && _lastMode == 'rule'
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
               : FilledButton.icon(
                   icon: const Icon(Icons.auto_awesome),
-                  label: const Text('规则解析'),
+                  label: Text(t.tr('ai.rule_parse')),
                   onPressed: _loading ? null : _parseRule,
                 ),
           ),
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
-            child: Text('适合简单的句子', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(t.tr('ai.rule_desc'), style: const TextStyle(color: Colors.grey, fontSize: 12)),
           ),
           const SizedBox(height: 12),
 
-          // 大模型解析按钮
           SizedBox(
             width: double.infinity,
             child: _loading && _lastMode == 'ai'
@@ -186,30 +187,30 @@ class _AiInputPageState extends State<AiInputPage> {
                   const SizedBox(width: 12),
                   TextButton.icon(
                     icon: const Icon(Icons.cancel_outlined, size: 18, color: Colors.red),
-                    label: const Text('取消', style: TextStyle(color: Colors.red, fontSize: 13)),
+                    label: Text(t.tr('ai.cancel'), style: const TextStyle(color: Colors.red, fontSize: 13)),
                     onPressed: _cancelRequest,
                   ),
                 ])
               : OutlinedButton.icon(
                   icon: const Icon(Icons.psychology),
-                  label: const Text('大模型解析'),
+                  label: Text(t.tr('ai.llm_parse')),
                   onPressed: _loading ? null : _parseAi,
                 ),
           ),
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text('需要在设置中填写大模型API，支持复杂句记账',
-              style: TextStyle(color: Colors.grey, fontSize: 12), textAlign: TextAlign.center),
+            child: Text(t.tr('ai.llm_desc'),
+              style: const TextStyle(color: Colors.grey, fontSize: 12), textAlign: TextAlign.center),
           ),
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
-            child: Text('注意：大模型解析容易解析错误',
+            child: Text(t.tr('ai.llm_warning'),
               style: TextStyle(color: Colors.orange.shade700, fontSize: 11), textAlign: TextAlign.center),
           ),
           if (widget.onRequestSettings != null)
             TextButton.icon(
               icon: const Icon(Icons.settings, size: 16),
-              label: const Text('前往设置配置API', style: TextStyle(fontSize: 13)),
+              label: Text(t.tr('ai.go_settings'), style: const TextStyle(fontSize: 13)),
               onPressed: () {
                 widget.onRequestSettings?.call();
                 Navigator.pop(context);
@@ -224,20 +225,20 @@ class _AiInputPageState extends State<AiInputPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(children: [
-                      Text('金额: ¥${_result!.amount!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 18)),
-                      Text('分类: ${_result!.category}'),
-                      Text('日期: ${_result!.timestamp.isEmpty ? DateTime.now().toString().split(' ')[0] : _result!.timestamp}'),
-                      Text('备注: ${_result!.note}'),
+                      Text('${t.tr('ai.amount')}: ¥${_result!.amount!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 18)),
+                      Text('${t.tr('ai.category')}: ${_result!.category}'),
+                      Text('${t.tr('ai.date')}: ${_result!.timestamp.isEmpty ? DateTime.now().toString().split(' ')[0] : _result!.timestamp}'),
+                      Text('${t.tr('ai.note')}: ${_result!.note}'),
                       const SizedBox(height: 12),
                       Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        FilledButton(onPressed: () => _confirm(_result!.toJson()), child: const Text('确认保存')),
+                        FilledButton(onPressed: () => _confirm(_result!.toJson()), child: Text(t.tr('ai.confirm_save'))),
                         const SizedBox(width: 12),
                         OutlinedButton(
                           onPressed: () => showDialog(
                             context: context,
                             builder: (_) => ConfirmDialog(result: _result!, onConfirm: _confirm),
                           ),
-                          child: const Text('修改')),
+                          child: Text(t.tr('ai.edit'))),
                       ]),
                     ]),
                   ),

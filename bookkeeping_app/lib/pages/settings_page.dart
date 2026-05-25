@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../database/database.dart';
 import '../services/settings_service.dart';
 import '../services/export_service.dart';
+import '../services/translations.dart';
 
 class SettingsPage extends StatefulWidget {
   final AppDatabase db;
@@ -28,7 +29,6 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    // Always start with empty fields
     _keyCtrl.clear();
     _endpointCtrl.clear();
     _modelCtrl.clear();
@@ -51,7 +51,6 @@ class _SettingsPageState extends State<SettingsPage> {
     if (name.isEmpty) return;
     await widget.settings.saveCurrentApiConfig(name);
     _savedConfigs = widget.settings.apiConfigList;
-    // Clear all fields after save
     _configNameCtrl.clear();
     _keyCtrl.clear();
     _endpointCtrl.clear();
@@ -60,17 +59,14 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _applyConfig(Map<String, String> cfg) async {
-    // Apply config immediately to settings
     widget.settings.apiKey = cfg['key'] ?? '';
     widget.settings.apiEndpoint = cfg['endpoint'] ?? '';
     widget.settings.apiModel = cfg['model'] ?? '';
-    // Don't fill form fields - keep them empty for new input
     widget.onThemeChanged();
     setState(() {});
   }
 
   Future<void> _editConfig(Map<String, String> cfg) async {
-    // Load config values into form fields for editing
     _configNameCtrl.text = cfg['name'] ?? '';
     _keyCtrl.text = cfg['key'] ?? '';
     _endpointCtrl.text = cfg['endpoint'] ?? '';
@@ -92,71 +88,70 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTranslations.of(context);
 
     return SafeArea(
       child: ListView(children: [
-        const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('设置', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(t.tr('settings.title'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
         ),
 
-        // API 配置
+        // API Configuration
         Container(
           color: _highlight ? Colors.amber.withAlpha(40) : null,
           child: ExpansionTile(
           initiallyExpanded: widget.apiExpanded,
           leading: const Icon(Icons.api),
-          title: const Text('API 配置'),
+          title: Text(t.tr('settings.api_config')),
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 TextField(
                   controller: _keyCtrl,
-                  decoration: const InputDecoration(labelText: 'API Key', hintText: '输入 API Key'),
+                  decoration: InputDecoration(labelText: t.tr('settings.api_key'), hintText: t.tr('settings.api_key_hint')),
                   onChanged: (v) => widget.settings.apiKey = v,
                 ),
                 const SizedBox(height: 4),
-                const Text('例如 DeepSeek 的 API 格式: sk-...',
+                Text(t.tr('settings.api_key_example'),
                   textAlign: TextAlign.left,
-                  style: TextStyle(color: Colors.grey, fontSize: 11)),
+                  style: const TextStyle(color: Colors.grey, fontSize: 11)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _endpointCtrl,
-                  decoration: const InputDecoration(labelText: '接口地址', hintText: 'https://api.deepseek.com'),
+                  decoration: InputDecoration(labelText: t.tr('settings.endpoint'), hintText: t.tr('settings.endpoint_hint')),
                   onChanged: (v) => widget.settings.apiEndpoint = v,
                 ),
                 const SizedBox(height: 4),
-                const Text('DeepSeek 接口地址: https://api.deepseek.com/chat/completions',
+                Text(t.tr('settings.endpoint_example'),
                   textAlign: TextAlign.left,
-                  style: TextStyle(color: Colors.grey, fontSize: 11)),
+                  style: const TextStyle(color: Colors.grey, fontSize: 11)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _modelCtrl,
-                  decoration: const InputDecoration(labelText: '模型', hintText: 'deepseek-v4-flash'),
+                  decoration: InputDecoration(labelText: t.tr('settings.model'), hintText: t.tr('settings.model_hint')),
                   onChanged: (v) => widget.settings.apiModel = v,
                 ),
                 const SizedBox(height: 4),
-                const Text('例如 deepseek-v4-flash 或 deepseek-v4-pro',
+                Text(t.tr('settings.model_example'),
                   textAlign: TextAlign.left,
-                  style: TextStyle(color: Colors.grey, fontSize: 11)),
+                  style: const TextStyle(color: Colors.grey, fontSize: 11)),
                 const SizedBox(height: 12),
-                // Save button
                 Row(children: [
                   Expanded(
                     child: TextField(
                       controller: _configNameCtrl,
-                      decoration: const InputDecoration(labelText: '配置名称', hintText: '例如: DeepSeek'),
+                      decoration: InputDecoration(labelText: t.tr('settings.config_name'), hintText: t.tr('settings.config_name_hint')),
                     ),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
                     onPressed: _saveConfig,
-                    child: const Text('保存'),
+                    child: Text(t.tr('settings.save')),
                   ),
                 ]),
                 const SizedBox(height: 12),
-                // Saved configs list
                 if (_savedConfigs.isNotEmpty)
                   ..._savedConfigs.map((cfg) {
                     final active = _isActiveConfig(cfg);
@@ -175,7 +170,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             color: Colors.teal.withAlpha(30),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Text('使用中', style: TextStyle(fontSize: 10, color: Colors.teal)),
+                          child: Text(t.tr('settings.in_use'), style: const TextStyle(fontSize: 10, color: Colors.teal)),
                         ),
                       ],
                     ]),
@@ -186,13 +181,13 @@ class _SettingsPageState extends State<SettingsPage> {
                           constraints: const BoxConstraints(maxWidth: 32),
                           icon: const Icon(Icons.check_circle_outline, size: 20, color: Colors.teal),
                           onPressed: () => _applyConfig(cfg),
-                          tooltip: '应用',
+                          tooltip: t.tr('settings.apply'),
                         ),
                       IconButton(
                         constraints: const BoxConstraints(maxWidth: 32),
                         icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
                         onPressed: () => _deleteConfig(cfg['name']!),
-                        tooltip: '删除',
+                        tooltip: t.tr('settings.delete'),
                       ),
                     ]),
                     onTap: () => _editConfig(cfg),
@@ -204,10 +199,10 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         ),
 
-        // 背景图
+        // Background
         ExpansionTile(
           leading: const Icon(Icons.wallpaper),
-          title: const Text('背景图'),
+          title: Text(t.tr('settings.background')),
           children: [
             Padding(
               padding: const EdgeInsets.all(12),
@@ -226,7 +221,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   FilledButton.icon(
                     icon: const Icon(Icons.add_photo_alternate, size: 16),
-                    label: const Text('选择图片'),
+                    label: Text(t.tr('settings.select_image')),
                     onPressed: () async {
                       try {
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -236,7 +231,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         }
                       } catch (e) {
                         if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('选择失败: $e')));
+                          SnackBar(content: Text('$e')));
                       }
                     },
                   ),
@@ -247,20 +242,20 @@ class _SettingsPageState extends State<SettingsPage> {
                         await widget.settings.removeBackgroundImage();
                         setState(() {});
                       },
-                      child: const Text('移除', style: TextStyle(color: Colors.red)),
+                      child: Text(t.tr('settings.remove_image'), style: const TextStyle(color: Colors.red)),
                     ),
                 ]),
                 const SizedBox(height: 6),
-                const Text('上传图片作为背景图片', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                Text(t.tr('settings.background_hint'), style: const TextStyle(color: Colors.grey, fontSize: 12)),
               ]),
             ),
           ],
         ),
 
-        // 更改软件名称
+        // App name
         ExpansionTile(
           leading: const Icon(Icons.title),
-          title: const Text('更改软件名称'),
+          title: Text(t.tr('settings.app_name')),
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
@@ -269,7 +264,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   Expanded(
                     child: TextField(
                       controller: _nameCtrl,
-                      decoration: const InputDecoration(labelText: '新名称（30字内）', hintText: '极速记账'),
+                      decoration: InputDecoration(labelText: t.tr('settings.app_name_label'), hintText: t.tr('settings.app_name_hint')),
                       inputFormatters: [LengthLimitingTextInputFormatter(30)],
                     ),
                   ),
@@ -278,7 +273,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                   TextButton(
                     onPressed: () { _nameCtrl.clear(); setState(() {}); },
-                    child: const Text('清空'),
+                    child: Text(t.tr('settings.clear')),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
@@ -288,10 +283,10 @@ class _SettingsPageState extends State<SettingsPage> {
                       widget.onThemeChanged();
                       setState(() {});
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(name.isEmpty ? '已恢复默认名称' : '名称已更改为: $name')),
+                        SnackBar(content: Text(name.isEmpty ? t.tr('settings.name_restored') : t.tr('settings.name_changed', {'name': name}))),
                       );
                     },
-                    child: const Text('保存'),
+                    child: Text(t.tr('settings.save_name')),
                   ),
                 ]),
               ]),
@@ -299,50 +294,68 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
         ),
 
-        // 主题
+        // Theme
         ExpansionTile(
           leading: const Icon(Icons.palette),
-          title: const Text('主题'),
+          title: Text(t.tr('settings.theme')),
           children: [
             RadioListTile<String>(
-              title: const Text('浅色'), value: 'light',
+              title: Text(t.tr('settings.theme_light')), value: 'light',
               groupValue: widget.settings.themeMode,
               onChanged: (v) { widget.settings.themeMode = v!; widget.onThemeChanged(); },
             ),
             RadioListTile<String>(
-              title: const Text('深色'), value: 'dark',
+              title: Text(t.tr('settings.theme_dark')), value: 'dark',
               groupValue: widget.settings.themeMode,
               onChanged: (v) { widget.settings.themeMode = v!; widget.onThemeChanged(); },
             ),
             RadioListTile<String>(
-              title: const Text('跟随系统'), value: 'system',
+              title: Text(t.tr('settings.theme_system')), value: 'system',
               groupValue: widget.settings.themeMode,
               onChanged: (v) { widget.settings.themeMode = v!; widget.onThemeChanged(); },
             ),
           ],
         ),
 
-        // 数据管理
+        // Language
+        ExpansionTile(
+          leading: const Icon(Icons.language),
+          title: Text(t.tr('settings.language')),
+          children: [
+            RadioListTile<String>(
+              title: Text(t.tr('settings.language_zh')), value: 'zh',
+              groupValue: widget.settings.language,
+              onChanged: (v) { widget.settings.language = v!; widget.onThemeChanged(); },
+            ),
+            RadioListTile<String>(
+              title: Text(t.tr('settings.language_en')), value: 'en',
+              groupValue: widget.settings.language,
+              onChanged: (v) { widget.settings.language = v!; widget.onThemeChanged(); },
+            ),
+          ],
+        ),
+
+        // Data management
         ExpansionTile(
           leading: const Icon(Icons.backup),
-          title: const Text('数据管理'),
+          title: Text(t.tr('settings.data')),
           children: [
             ListTile(
               leading: const Icon(Icons.upload),
-              title: const Text('导出数据'),
+              title: Text(t.tr('settings.export')),
               onTap: () async {
                 await _export.exportToJson();
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('导出成功')));
+                  SnackBar(content: Text(t.tr('settings.export_success'))));
               },
             ),
             ListTile(
               leading: const Icon(Icons.download),
-              title: const Text('导入数据'),
+              title: Text(t.tr('settings.import')),
               onTap: () async {
                 final r = await _export.importFromFile();
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('导入完成: ${r['imported']} 条新记录, ${r['skipped']} 条跳过')));
+                  SnackBar(content: Text(t.tr('settings.import_result', {'imported': '${r['imported']}', 'skipped': '${r['skipped']}'}))));
                 setState(() {});
               },
             ),

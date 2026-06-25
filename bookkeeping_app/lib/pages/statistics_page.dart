@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import '../services/translations.dart';
 import '../database/database.dart';
+import '../services/translations.dart';
 
+/// 统计页面 — 月度/年度收支饼图。
+/// 显示各类别占比，支持月/年切换和支出/收入切换。
 class StatisticsPage extends StatefulWidget {
   final AppDatabase db;
   const StatisticsPage({super.key, required this.db});
@@ -11,9 +13,15 @@ class StatisticsPage extends StatefulWidget {
 }
 
 class _StatisticsPageState extends State<StatisticsPage> {
-  DateTime _date = DateTime.now();
-  bool _showExpense = true;
-  bool _showYear = false;
+  DateTime _date = DateTime.now();  // 当前选中的月份/年份
+  bool _showExpense = true;         // true=显示支出 false=显示收入
+  bool _showYear = false;           // true=年度统计 false=月度统计
+
+  /// 从 composite key "type__name" 中提取分类显示名并翻译
+  String _catName(String key) {
+    final name = key.contains('__') ? key.split('__').last : key;
+    return AppTranslations.of(context).trCategory(name);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +29,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
     final loc = Localizations.localeOf(context).toString();
     return SafeArea(
       child: Column(children: [
+        // ── 月/年切换 ──
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           ChoiceChip(label: Text(t.tr('stats.month')), selected: !_showYear,
             onSelected: (_) => setState(() => _showYear = false)),
@@ -28,6 +37,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
           ChoiceChip(label: Text(t.tr('stats.year')), selected: _showYear,
             onSelected: (_) => setState(() => _showYear = true)),
         ]),
+        // ── 年月选择（左右箭头 + 点击弹出选择器） ──
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -38,6 +48,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
             GestureDetector(
               onTap: () async {
                 if (_showYear) {
+                  // 年度视图：只选年份
                   final picked = await showDialog<int>(
                     context: context,
                     builder: (ctx) => AlertDialog(
@@ -55,6 +66,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   );
                   if (picked != null) setState(() => _date = DateTime(picked, 1, 1));
                 } else {
+                  // 月度视图：先选年份，再选月份
                   final pickedYear = await showDialog<int>(
                     context: context,
                     builder: (ctx) => AlertDialog(
@@ -111,6 +123,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 : DateTime(_date.year, _date.month + 1, 1))),
           ]),
         ),
+        // ── 支出/收入切换 ──
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           ChoiceChip(label: Text(t.tr('stats.expense')), selected: _showExpense,
             selectedColor: Colors.red.withAlpha(40),
@@ -121,12 +134,14 @@ class _StatisticsPageState extends State<StatisticsPage> {
             onSelected: (_) => setState(() => _showExpense = false)),
         ]),
         const SizedBox(height: 8),
+        // ── 图表区域 ──
         Expanded(
           child: FutureBuilder<Map<String, double>>(
             future: _showYear ? widget.db.yearlySummary(_date.year) : widget.db.monthlySummary(_date),
             builder: (_, snap) {
               if (!snap.hasData) return const Center(child: CircularProgressIndicator());
               final data = snap.data!;
+              // 过滤出支出或收入数据
               var items = data.entries
                 .where((e) => _showExpense ? e.value < 0 : e.value > 0)
                 .toList();
@@ -137,18 +152,21 @@ class _StatisticsPageState extends State<StatisticsPage> {
               if (total == 0) {
                 return Center(child: Text(_showExpense ? t.tr('stats.no_expense') : t.tr('stats.no_income')));
               }
+              // 饼图配色：支出暖色系、收入绿色系
               final colors = _showExpense
                 ? [Colors.red, Colors.deepOrange, Colors.orange, Colors.amber,
                    Colors.brown, Colors.pink, Colors.deepPurple, Colors.indigo, Colors.redAccent]
                 : [Colors.green, Colors.teal, Colors.lightGreen, Colors.lime,
                    Colors.greenAccent, Colors.tealAccent, Colors.cyan, Colors.lightGreenAccent, Colors.limeAccent];
               return Column(children: [
+                // 合计金额
                 Padding(
                   padding: const EdgeInsets.all(8),
                   child: Text(
                     '${_showYear ? _date.year : DateFormat.MMM(loc).format(_date)} ${_showExpense ? t.tr('stats.expense') : t.tr('stats.income')}: ¥${total.toStringAsFixed(2)}',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
+                // 饼图 + 类别列表
                 Expanded(
                   child: ListView(children: [
                     SizedBox(
@@ -158,9 +176,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
                           final pct = e.value.value.abs() / total * 100;
                           return PieChartSectionData(
                             value: e.value.value.abs(),
-                            title: pct >= 8 ? '${pct.toStringAsFixed(2)}%' : '',
+                            title: pct >= 8 ? '${pct.toStringAsFixed(2)}%' : '',   // 占比 >= 8% 才在扇区内显示
                             color: colors[e.key % colors.length],
-                            radius: pct < 3 ? 40 : (pct < 8 ? 52 : 62),
+                            radius: pct < 3 ? 40 : (pct < 8 ? 52 : 62),           // 小扇区半径缩小
                             titleStyle: TextStyle(
                               fontSize: pct < 8 ? 9 : 12,
                               color: Colors.white,
@@ -181,9 +199,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
                       )),
                     ),
                     const Divider(height: 32),
+                    // 图例：每种类别的名称和金额
                     ...items.map((e) => ListTile(
                       leading: Icon(Icons.circle, color: colors[items.indexOf(e) % colors.length], size: 12),
-                      title: Text(e.key),
+                      title: Text(_catName(e.key)),
                       trailing: Text('¥${e.value.abs().toStringAsFixed(2)}',
                         style: const TextStyle(fontWeight: FontWeight.w600)),
                     )),

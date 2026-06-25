@@ -1,3 +1,6 @@
+/// 数据导入导出服务 — 将所有分类和交易序列化为 JSON，通过系统分享导出；
+/// 或从 JSON 文件读取并写入数据库。
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
@@ -5,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../database/database.dart';
 
+/// 导出数据模型 — 包含版本号、导出时间、分类列表和交易列表
 class ExportData {
   final int version;
   final String exportTime;
@@ -33,6 +37,7 @@ class ExportService {
 
   ExportService(this.db);
 
+  /// 导出全部数据为 JSON 并通过系统分享发送
   Future<String> exportToJson() async {
     final cats = await db.allCategories();
     final txns = await db.allTransactions();
@@ -59,6 +64,8 @@ class ExportService {
     return file.path;
   }
 
+  /// 从 JSON 文件导入数据
+  /// 返回 {imported: 新记录数, skipped: 重复跳过的记录数}
   Future<Map<String, int>> importFromFile() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.any);
     if (result == null || result.files.single.path == null) {
@@ -69,7 +76,7 @@ class ExportService {
 
     int imported = 0, skipped = 0;
 
-    // Import categories
+    // 导入分类（同名不重复创建）
     for (final c in data.categories) {
       final existing = await db.allCategories();
       if (!existing.any((e) => e.name == c['name'])) {
@@ -77,7 +84,7 @@ class ExportService {
       }
     }
 
-    // Import transactions (no dedup)
+    // 导入交易记录（不做去重）
     final cats = await db.allCategories();
     for (final t in data.transactions) {
       final amt = (t['amount'] as num).toDouble();

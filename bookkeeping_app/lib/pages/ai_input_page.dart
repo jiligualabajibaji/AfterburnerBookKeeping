@@ -2,28 +2,29 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../database/database.dart';
-import '../database/models.dart';
 import '../services/ai_bridge.dart';
 import '../services/settings_service.dart';
 import '../services/translations.dart';
 import '../widgets/confirm_dialog.dart';
 
+/// AI 记账页面 — 用自然语言描述交易，支持规则引擎和 LLM 双模式解析。
 class AiInputPage extends StatefulWidget {
   final AppDatabase db;
-  final VoidCallback? onRequestSettings;
+  final VoidCallback? onRequestSettings;  // 点击"去设置"时回调，让主页跳转到设置页
   const AiInputPage({super.key, required this.db, this.onRequestSettings});
   @override State<AiInputPage> createState() => _AiInputPageState();
 }
 
 class _AiInputPageState extends State<AiInputPage> {
-  final _textCtrl = TextEditingController();
-  final _settings = SettingsService();
-  AiParseResult? _result;
-  bool _loading = false;
-  String _lastMode = '';
+  final _textCtrl = TextEditingController();  // 自然语言输入框
+  final _settings = SettingsService();         // 读取 API 配置
+  AiParseResult? _result;     // 解析结果
+  bool _loading = false;      // 是否正在解析
+  String _lastMode = '';      // 上次使用的解析模式（'rule' 或 'ai'）
   DateTime _lastSnackTime = DateTime(2000);
-  http.Client? _activeClient;
+  http.Client? _activeClient;  // 保存 HTTP 客户端引用，用于取消请求
 
+  /// 取消正在进行的 LLM 请求
   void _cancelRequest() {
     _activeClient?.close();
     _activeClient = null;
@@ -35,6 +36,7 @@ class _AiInputPageState extends State<AiInputPage> {
     _settings.init();
   }
 
+  /// 在屏幕顶部显示提示消息
   void _showTopSnack(String msg, {bool isError = true}) {
     _lastSnackTime = DateTime.now();
     final overlay = Overlay.of(context);
@@ -56,6 +58,7 @@ class _AiInputPageState extends State<AiInputPage> {
     Future.delayed(const Duration(seconds: 2), () { entry.remove(); });
   }
 
+  /// 规则引擎解析 — 基于正则和关键词匹配
   Future<void> _parseRule() async {
     if (_textCtrl.text.trim().isEmpty) { _showTopSnack('请先输入记账内容'); return; }
     setState(() { _loading = true; _result = null; _lastMode = 'rule'; });
@@ -64,8 +67,10 @@ class _AiInputPageState extends State<AiInputPage> {
     setState(() { _result = r; _loading = false; });
   }
 
+  /// LLM 大模型解析 — 调用 OpenAI 兼容 API
   Future<void> _parseAi() async {
     if (_textCtrl.text.trim().isEmpty) { _showTopSnack('请先输入记账内容'); return; }
+    // 检查 API 是否已配置
     if (_settings.apiKey.isEmpty) {
       final at = AppTranslations.of(context);
       final go = await showDialog<bool>(
@@ -80,7 +85,7 @@ class _AiInputPageState extends State<AiInputPage> {
         ),
       );
       if (go == true && mounted) {
-        widget.onRequestSettings?.call();
+        widget.onRequestSettings?.call();  // 通知主页跳转到设置页
         Navigator.pop(context);
       }
       return;
@@ -92,6 +97,7 @@ class _AiInputPageState extends State<AiInputPage> {
       endpoint: _settings.apiEndpoint,
       model: _settings.apiModel,
     );
+    // 错误处理
     if (r.error == 'network') { _showTopSnack('需要接入网络'); setState(() { _loading = false; }); return; }
     if (r.error != null && r.error!.startsWith('api:')) {
       final msg = r.error!.substring(4);
@@ -102,6 +108,7 @@ class _AiInputPageState extends State<AiInputPage> {
     setState(() { _result = r; _loading = false; });
   }
 
+  /// 确认保存解析结果到数据库
   Future<void> _confirm(Map<String, dynamic> data) async {
     try {
       final cats = await widget.db.allCategories();
@@ -115,6 +122,7 @@ class _AiInputPageState extends State<AiInputPage> {
       else if (rawAmount is num) amount = rawAmount.toDouble();
       else amount = 0;
       amount = double.parse(amount.toStringAsFixed(2));
+      // 根据类别类型自动转换金额正负
       if (cat.type == 'expense' && amount > 0) amount = -amount;
       if (cat.type == 'income' && amount < 0) amount = -amount;
       if (cat.id == null) { throw Exception('分类ID为空'); }
@@ -136,6 +144,7 @@ class _AiInputPageState extends State<AiInputPage> {
     }
   }
 
+  /// 解析时间戳字符串，失败时返回当前时间
   int _parseTimestamp(String ts) {
     if (ts.isEmpty) return DateTime.now().millisecondsSinceEpoch ~/ 1000;
     try { return DateTime.parse(ts).millisecondsSinceEpoch ~/ 1000; }
@@ -153,6 +162,7 @@ class _AiInputPageState extends State<AiInputPage> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(children: [
+          // 自然语言输入框
           TextField(
             controller: _textCtrl,
             maxLines: 3,
@@ -163,6 +173,7 @@ class _AiInputPageState extends State<AiInputPage> {
           ),
           const SizedBox(height: 16),
 
+          // 规则解析按钮（适合简单句子）
           SizedBox(
             width: double.infinity,
             child: _loading && _lastMode == 'rule'
@@ -179,6 +190,7 @@ class _AiInputPageState extends State<AiInputPage> {
           ),
           const SizedBox(height: 12),
 
+          // 大模型解析按钮（支持取消）
           SizedBox(
             width: double.infinity,
             child: _loading && _lastMode == 'ai'
@@ -207,6 +219,7 @@ class _AiInputPageState extends State<AiInputPage> {
             child: Text(t.tr('ai.llm_warning'),
               style: TextStyle(color: Colors.orange.shade700, fontSize: 11), textAlign: TextAlign.center),
           ),
+          // "前往设置配置API" 按钮（从主页进入时显示）
           if (widget.onRequestSettings != null)
             TextButton.icon(
               icon: const Icon(Icons.settings, size: 16),
@@ -218,6 +231,7 @@ class _AiInputPageState extends State<AiInputPage> {
             ),
 
           const SizedBox(height: 20),
+          // 显示解析结果
           if (_result != null)
             !_result!.isComplete
               ? ConfirmDialog(result: _result!, onConfirm: _confirm)

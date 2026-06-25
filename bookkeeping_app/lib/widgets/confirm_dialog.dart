@@ -1,3 +1,6 @@
+/// AI 解析结果确认弹窗 — 在 AI 记账页面中使用。
+/// 用户可以在保存前修改解析出的金额、分类、日期和备注。
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/ai_bridge.dart';
@@ -5,7 +8,7 @@ import '../services/translations.dart';
 
 class ConfirmDialog extends StatefulWidget {
   final AiParseResult result;
-  final ValueChanged<Map<String, dynamic>> onConfirm;
+  final ValueChanged<Map<String, dynamic>> onConfirm;  // 确认保存时的回调
 
   const ConfirmDialog({super.key, required this.result, required this.onConfirm});
 
@@ -23,6 +26,7 @@ class _ConfirmDialogState extends State<ConfirmDialog> {
   @override
   void initState() {
     super.initState();
+    // 用解析结果初始化表单
     _amountCtrl = TextEditingController(text: widget.result.amount?.toString() ?? '');
     _category = widget.result.category;
     _selectedDate = _parseDate(widget.result.timestamp);
@@ -31,18 +35,13 @@ class _ConfirmDialogState extends State<ConfirmDialog> {
   }
 
   DateTime _parseDate(String ts) {
-    try {
-      return DateTime.parse(ts);
-    } catch (_) {
-      return DateTime.now();
-    }
+    try { return DateTime.parse(ts); }
+    catch (_) { return DateTime.now(); }
   }
 
   @override
   void dispose() {
-    _amountCtrl.dispose();
-    _dateCtrl.dispose();
-    _noteCtrl.dispose();
+    _amountCtrl.dispose(); _dateCtrl.dispose(); _noteCtrl.dispose();
     super.dispose();
   }
 
@@ -54,12 +53,14 @@ class _ConfirmDialogState extends State<ConfirmDialog> {
     return AlertDialog(
       title: Text(t.tr('dialog.save')),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
+        // 金额
         TextField(
           controller: _amountCtrl,
           decoration: InputDecoration(labelText: t.tr('dialog.amount'), hintText: t.tr('dialog.amount')),
           keyboardType: TextInputType.number,
         ),
         const SizedBox(height: 8),
+        // 分类（下拉选择）
         DropdownButtonFormField<String>(
           value: allCategories.contains(_category) ? _category : null,
           decoration: InputDecoration(labelText: t.tr('dialog.category')),
@@ -67,6 +68,7 @@ class _ConfirmDialogState extends State<ConfirmDialog> {
           onChanged: (v) => _category = v,
         ),
         const SizedBox(height: 8),
+        // 日期（只读，点击弹出 DatePicker）
         TextField(
           controller: _dateCtrl,
           readOnly: true,
@@ -87,6 +89,7 @@ class _ConfirmDialogState extends State<ConfirmDialog> {
           },
         ),
         const SizedBox(height: 8),
+        // 备注
         TextField(
           controller: _noteCtrl,
           decoration: InputDecoration(labelText: t.tr('dialog.note')),

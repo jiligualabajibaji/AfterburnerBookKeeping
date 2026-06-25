@@ -1,0 +1,1 @@
+set PATH=C:\Windows\system32;C:\Windows;E:\Git\mingw64\bin;E:\Git\cmd;C:\Windows\System32\WindowsPowerShell\v1.0&&cd /d E:\PyCharm 2024.3.1.1\Project\BookkeepingAgent\bookkeeping_app&&flutter build apk --release --split-per-abi> C:\Users\Jiliguala\AppData\Local\Temp\build.log 2>&1

@@ -7,34 +7,38 @@ import '../services/settings_service.dart';
 import '../services/export_service.dart';
 import '../services/translations.dart';
 
+/// 设置页面 — 管理 API 配置、背景图、软件名称、主题、语言、数据导入导出。
 class SettingsPage extends StatefulWidget {
   final AppDatabase db;
   final SettingsService settings;
-  final VoidCallback onThemeChanged;
-  final bool apiExpanded;
+  final VoidCallback onThemeChanged;  // 设置变更后通知主页刷新
+  final bool apiExpanded;             // 是否展开 API 配置（从 AI 页跳转时使用）
   const SettingsPage({super.key, required this.db, required this.settings, required this.onThemeChanged, this.apiExpanded = false});
   @override State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  // ── API 配置表单控制器 ──
   final _keyCtrl = TextEditingController();
   final _endpointCtrl = TextEditingController();
   final _modelCtrl = TextEditingController();
   final _configNameCtrl = TextEditingController();
-  final _nameCtrl = TextEditingController();
-  List<Map<String, String>> _savedConfigs = [];
+  final _nameCtrl = TextEditingController();  // 软件名称
+  List<Map<String, String>> _savedConfigs = [];  // 已保存的 API 配置列表
   late ExportService _export;
-  bool _highlight = false;
+  bool _highlight = false;  // 从 AI 页跳转时的高亮效果
 
   @override
   void initState() {
     super.initState();
+    // 表单初始化为空（不显示已保存的值）
     _keyCtrl.clear();
     _endpointCtrl.clear();
     _modelCtrl.clear();
     _nameCtrl.text = widget.settings.appName;
     _savedConfigs = widget.settings.apiConfigList;
     _export = ExportService(widget.db);
+    // 从 AI 页跳转时展开 API 配置并高亮 1 秒
     if (widget.apiExpanded) {
       _highlight = true;
       Future.delayed(const Duration(seconds: 1), () {
@@ -44,13 +48,19 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   @override
-  void dispose() { _keyCtrl.dispose(); _endpointCtrl.dispose(); _modelCtrl.dispose(); _configNameCtrl.dispose(); _nameCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    _keyCtrl.dispose(); _endpointCtrl.dispose(); _modelCtrl.dispose();
+    _configNameCtrl.dispose(); _nameCtrl.dispose();
+    super.dispose();
+  }
 
+  /// 保存当前 API 配置为预设
   Future<void> _saveConfig() async {
     final name = _configNameCtrl.text.trim();
     if (name.isEmpty) return;
     await widget.settings.saveCurrentApiConfig(name);
     _savedConfigs = widget.settings.apiConfigList;
+    // 保存后清空表单
     _configNameCtrl.clear();
     _keyCtrl.clear();
     _endpointCtrl.clear();
@@ -58,6 +68,7 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {});
   }
 
+  /// 应用某条预设配置（将其设为当前使用的配置）
   Future<void> _applyConfig(Map<String, String> cfg) async {
     widget.settings.apiKey = cfg['key'] ?? '';
     widget.settings.apiEndpoint = cfg['endpoint'] ?? '';
@@ -66,6 +77,7 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {});
   }
 
+  /// 编辑某条预设配置（将值加载到表单中）
   Future<void> _editConfig(Map<String, String> cfg) async {
     _configNameCtrl.text = cfg['name'] ?? '';
     _keyCtrl.text = cfg['key'] ?? '';
@@ -74,12 +86,14 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {});
   }
 
+  /// 判断某条配置是否为当前正在使用的配置
   bool _isActiveConfig(Map<String, String> cfg) {
     return cfg['key'] == widget.settings.apiKey
         && cfg['endpoint'] == widget.settings.apiEndpoint
         && cfg['model'] == widget.settings.apiModel;
   }
 
+  /// 删除某条预设配置
   Future<void> _deleteConfig(String name) async {
     await widget.settings.deleteApiConfig(name);
     _savedConfigs = widget.settings.apiConfigList;
@@ -92,12 +106,15 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return SafeArea(
       child: ListView(children: [
+        // ── 页面标题 ──
         Padding(
           padding: const EdgeInsets.all(16),
           child: Text(t.tr('settings.title'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
         ),
 
-        // API Configuration
+        // ═══════════════════════════════════
+        //  API 配置
+        // ═══════════════════════════════════
         Container(
           color: _highlight ? Colors.amber.withAlpha(40) : null,
           child: ExpansionTile(
@@ -108,6 +125,7 @@ class _SettingsPageState extends State<SettingsPage> {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // API Key
                 TextField(
                   controller: _keyCtrl,
                   decoration: InputDecoration(labelText: t.tr('settings.api_key'), hintText: t.tr('settings.api_key_hint')),
@@ -118,6 +136,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   textAlign: TextAlign.left,
                   style: const TextStyle(color: Colors.grey, fontSize: 11)),
                 const SizedBox(height: 8),
+                // 接口地址
                 TextField(
                   controller: _endpointCtrl,
                   decoration: InputDecoration(labelText: t.tr('settings.endpoint'), hintText: t.tr('settings.endpoint_hint')),
@@ -128,6 +147,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   textAlign: TextAlign.left,
                   style: const TextStyle(color: Colors.grey, fontSize: 11)),
                 const SizedBox(height: 8),
+                // 模型
                 TextField(
                   controller: _modelCtrl,
                   decoration: InputDecoration(labelText: t.tr('settings.model'), hintText: t.tr('settings.model_hint')),
@@ -138,6 +158,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   textAlign: TextAlign.left,
                   style: const TextStyle(color: Colors.grey, fontSize: 11)),
                 const SizedBox(height: 12),
+                // 保存配置
                 Row(children: [
                   Expanded(
                     child: TextField(
@@ -152,6 +173,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ]),
                 const SizedBox(height: 12),
+                // 已保存的配置列表
                 if (_savedConfigs.isNotEmpty)
                   ..._savedConfigs.map((cfg) {
                     final active = _isActiveConfig(cfg);
@@ -199,7 +221,9 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         ),
 
-        // Background
+        // ═══════════════════════════════════
+        //  背景图
+        // ═══════════════════════════════════
         ExpansionTile(
           leading: const Icon(Icons.wallpaper),
           title: Text(t.tr('settings.background')),
@@ -207,6 +231,7 @@ class _SettingsPageState extends State<SettingsPage> {
             Padding(
               padding: const EdgeInsets.all(12),
               child: Column(children: [
+                // 预览当前背景图
                 () {
                   final bg = widget.settings.backgroundImagePath;
                   if (bg != null) {
@@ -252,7 +277,9 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
         ),
 
-        // App name
+        // ═══════════════════════════════════
+        //  更改软件名称
+        // ═══════════════════════════════════
         ExpansionTile(
           leading: const Icon(Icons.title),
           title: Text(t.tr('settings.app_name')),
@@ -294,7 +321,9 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
         ),
 
-        // Theme
+        // ═══════════════════════════════════
+        //  主题
+        // ═══════════════════════════════════
         ExpansionTile(
           leading: const Icon(Icons.palette),
           title: Text(t.tr('settings.theme')),
@@ -317,7 +346,9 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
         ),
 
-        // Language
+        // ═══════════════════════════════════
+        //  语言
+        // ═══════════════════════════════════
         ExpansionTile(
           leading: const Icon(Icons.language),
           title: Text(t.tr('settings.language')),
@@ -335,7 +366,9 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
         ),
 
-        // Data management
+        // ═══════════════════════════════════
+        //  数据管理（导出/导入）
+        // ═══════════════════════════════════
         ExpansionTile(
           leading: const Icon(Icons.backup),
           title: Text(t.tr('settings.data')),

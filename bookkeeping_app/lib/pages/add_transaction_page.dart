@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/database.dart';
 import '../database/models.dart';
+import '../services/settings_service.dart';
 import '../services/translations.dart';
 
 /// 记一笔页面 — 手动录入/编辑交易记录。
@@ -19,8 +20,12 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   // ── 表单控制器与焦点 ──
   final _amountCtrl = TextEditingController();  // 金额输入
   final _noteCtrl = TextEditingController();     // 备注输入
+  final _quantityCtrl = TextEditingController(); // 数量输入
+  final _unitCtrl = TextEditingController();     // 单位输入
   final _amountFocus = FocusNode();              // 金额框焦点
   final _noteFocus = FocusNode();                // 备注框焦点
+  final _settings = SettingsService();           // 读取数量/单位设置
+  double _stepInterval = 1.0;                    // 数量增减步长
 
   // ── 表单状态 ──
   bool _isExpense = true;        // true=支出 false=收入
@@ -53,6 +58,16 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     _noteCtrl.addListener(() {
       if (!_settingDefault) _manualNote = _noteCtrl.text;
     });
+    // 异步初始化设置后再读取步长/单位/数量默认值
+    _settings.init().then((_) {
+      if (!mounted) return;
+      setState(() {
+        _stepInterval = _settings.stepInterval;
+        if (_unitCtrl.text.isEmpty) _unitCtrl.text = _settings.defaultUnit;
+        final defQty = _settings.defaultQuantity;
+        if (defQty != null && _quantityCtrl.text.isEmpty) _quantityCtrl.text = _trimNum(defQty);
+      });
+    });
     final edit = widget.editTxn;
     if (edit != null) {
       // 编辑模式：从传入的交易数据填充表单
@@ -60,6 +75,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       _categoryId = edit.category.id;
       _amountCtrl.text = edit.transaction.amount.abs().toString();
       _noteCtrl.text = edit.transaction.note ?? '';
+      _quantityCtrl.text = edit.transaction.quantity != null && edit.transaction.quantity! > 0
+          ? _trimNum(edit.transaction.quantity!) : '';
+      _unitCtrl.text = edit.transaction.unit ?? '';
       _selectedDate = DateTime.fromMillisecondsSinceEpoch(edit.transaction.timestamp * 1000);
     } else {
       // 新增模式：使用默认值
@@ -87,10 +105,163 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     });
   }
 
+  /// 去掉小数末尾多余的 0（1.0 → "1"，1.50 → "1.5"）
+  String _trimNum(double v) {
+    if (v == v.roundToDouble()) return v.round().toString();
+    return v.toString();
+  }
+
+  /// 步进按钮（减号/加号）
+  Widget _stepBtn(IconData icon, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        width: 44, height: 48,
+        child: Icon(icon, size: 20, color: _themeColor),
+      ),
+    );
+  }
+
+  /// 单个单位行（用于设置对话框中的自定义拖拽列表）
+  Widget _buildUnitRow(String unit, {required VoidCallback onDelete}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: Colors.grey.withAlpha(18),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.drag_handle, size: 18, color: Colors.grey),
+        title: Text(unit, style: const TextStyle(fontSize: 14)),
+        trailing: IconButton(
+          icon: const Icon(Icons.close, size: 16, color: Colors.red),
+          onPressed: onDelete,
+        ),
+      ),
+    );
+  }
+
+  /// 数量加减
+  void _changeQuantity(double delta) {
+    final text = _quantityCtrl.text.trim();
+    final cur = text.isEmpty ? 0.0 : (double.tryParse(text) ?? 0.0);
+    final next = cur + delta;
+    if (next < 0) return;  // 不允许负数
+    _quantityCtrl.text = _trimNum(double.parse(next.toStringAsFixed(2)));
+  }
+
+  /// 长按提示文字 → 打开数量/单位设置
+  Future<void> _openQuantitySettings() async {
+    final s = AppTranslations.of(context);
+    final stepCtrl = TextEditingController(text: _trimNum(_stepInterval));
+    final qtyCtrl = TextEditingController(text: _settings.defaultQuantity != null ? _trimNum(_settings.defaultQuantity!) : '');
+    final newUnitCtrl = TextEditingController();
+    final unitList = List<String>.from(_settings.units);
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDiaState) => AlertDialog(
+          scrollable: true,
+          title: Text(s.tr('add.quantity_settings')),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                TextField(
+                  controller: stepCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: s.tr('add.step_interval'), isDense: true),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: qtyCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: s.tr('add.default_quantity'), isDense: true),
+                ),
+                const SizedBox(height: 16),
+                // 单位列表管理（固定高度内部滚动，长按整行拖动排序 + 删除 + 新增）
+                Text(s.tr('add.units'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                if (unitList.isNotEmpty)
+                  Column(children: [
+                    for (int i = 0; i < unitList.length; i++)
+                      DragTarget<int>(
+                        key: ValueKey('drag_$i'),
+                        onWillAccept: (data) => data != null && data != i,
+                        onAccept: (from) {
+                          setDiaState(() {
+                            final item = unitList.removeAt(from);
+                            unitList.insert(i, item);
+                          });
+                        },
+                        builder: (context, candidates, rejected) =>
+                            LongPressDraggable<int>(
+                          data: i,
+                          axis: Axis.vertical,
+                          feedback: Material(
+                            color: Colors.transparent,
+                            child: Opacity(opacity: 0.9, child: _buildUnitRow(unitList[i], onDelete: () => setDiaState(() { unitList.remove(unitList[i]); if (unitList.isEmpty) unitList.add('个'); }))),
+                          ),
+                          childWhenDragging: Opacity(opacity: 0.3, child: _buildUnitRow(unitList[i], onDelete: () => setDiaState(() { unitList.remove(unitList[i]); if (unitList.isEmpty) unitList.add('个'); }))),
+                          child: _buildUnitRow(unitList[i], onDelete: () => setDiaState(() { unitList.remove(unitList[i]); if (unitList.isEmpty) unitList.add('个'); })),
+                        ),
+                      ),
+                  ]),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: newUnitCtrl,
+                      decoration: InputDecoration(labelText: s.tr('add.new_unit'), isDense: true),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonal(
+                    onPressed: () {
+                      final v = newUnitCtrl.text.trim();
+                      if (v.isNotEmpty && !unitList.contains(v)) {
+                        setDiaState(() => unitList.add(v));
+                        newUnitCtrl.clear();
+                      }
+                    },
+                    child: Text(s.tr('add.confirm_add')),
+                  ),
+            ]),
+          ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.tr('home.cancel'))),
+            FilledButton(onPressed: () {
+              final step = double.tryParse(stepCtrl.text.trim());
+              if (step != null && step > 0) {
+                _settings.stepInterval = step;
+                _stepInterval = step;
+              }
+              _settings.units = unitList;
+              _settings.defaultUnit = unitList.first;
+              final qty = double.tryParse(qtyCtrl.text.trim());
+              _settings.defaultQuantity = (qty == null || qty <= 0) ? null : qty;
+              // 同步当前表单
+              _unitCtrl.text = _settings.defaultUnit;
+              final defQty = _settings.defaultQuantity;
+              if (defQty != null && _quantityCtrl.text.isEmpty) _quantityCtrl.text = _trimNum(defQty);
+              setState(() {});
+              Navigator.pop(ctx);
+            }, child: Text(s.tr('add.rename_confirm'))),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _amountCtrl.dispose();
     _noteCtrl.dispose();
+    _quantityCtrl.dispose();
+    _unitCtrl.dispose();
     _amountFocus.dispose();
     _noteFocus.dispose();
     super.dispose();
@@ -106,6 +277,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
   /// 根据收支类型返回主题色：支出=红色，收入=绿色
   Color get _themeColor => _isExpense ? Colors.red : Colors.green;
+
+  /// 可选的单位列表（来自设置）
+  List<String> get _unitOptions => _settings.units;
 
   /// 在屏幕顶部显示 Toast 提示，2 秒内重复的消息不会弹出两次
   void _showTopSnack(String msg, {bool isError = true}) {
@@ -280,6 +454,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       _showTopSnack(s.tr('add.error_no_category'));
       return;
     }
+    // 数量/单位（数量为空或 <=0 则存 null）
+    final qtyText = _quantityCtrl.text.trim();
+    final qty = double.tryParse(qtyText);
+    final quantity = (qty == null || qty <= 0) ? null : double.parse(qty.toStringAsFixed(2));
+    final unit = quantity != null ? (_unitCtrl.text.trim().isEmpty ? '个' : _unitCtrl.text.trim()) : null;
     // 计算金额和时间戳
     final amount = double.parse(amountVal.toStringAsFixed(2));
     final ts = _showTime
@@ -290,12 +469,14 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     final edit = widget.editTxn;
     if (edit != null) {
       await widget.db.updateTransaction(edit.transaction.id!, amount: _isExpense ? -amount : amount,
-          categoryId: _categoryId!, note: _noteCtrl.text, timestamp: ts);
+          categoryId: _categoryId!, note: _noteCtrl.text, quantity: quantity, unit: unit, timestamp: ts);
     } else {
       await widget.db.addTransaction(
         amount: _isExpense ? -amount : amount,
         categoryId: _categoryId!,
         note: _noteCtrl.text,
+        quantity: quantity,
+        unit: unit,
         timestamp: ts,
       );
     }
@@ -303,6 +484,10 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       // 再记一笔：清空表单，保留分类和日期，聚焦金额框
       _amountCtrl.clear();
       _noteCtrl.clear();
+      _quantityCtrl.clear();
+      final defQty = _settings.defaultQuantity;
+      if (defQty != null) _quantityCtrl.text = _trimNum(defQty);
+      _unitCtrl.text = _settings.defaultUnit;
       _showTime = false;
       _amountFocus.unfocus();
       _noteFocus.unfocus();
@@ -457,6 +642,69 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       time?.hour ?? 0, time?.minute ?? 0,
                     ));
                   },
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
+
+          // ── 数量 + 单位 ──
+          Row(children: [
+            // 数量步进器：[-] 输入框 [+]（固定较短宽度）
+            Container(
+              width: 168,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withAlpha(15),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: color.withAlpha(60)),
+              ),
+              child: Row(children: [
+                _stepBtn(Icons.remove, () => _changeQuantity(-_stepInterval)),
+                Expanded(
+                  child: TextField(
+                    controller: _quantityCtrl,
+                    textAlign: TextAlign.center,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 12)),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+                _stepBtn(Icons.add, () => _changeQuantity(_stepInterval)),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            // 单位下拉选择（不可手动输入）
+            Expanded(
+              child: Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: color.withAlpha(15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: color.withAlpha(60)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _unitCtrl.text.isNotEmpty && _unitOptions.contains(_unitCtrl.text)
+                        ? _unitCtrl.text : _unitOptions.first,
+                    isExpanded: true,
+                    icon: Icon(Icons.arrow_drop_down, size: 20, color: color),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14),
+                    items: _unitOptions.map((u) => DropdownMenuItem(value: u, child: Text(u, overflow: TextOverflow.ellipsis))).toList(),
+                    onChanged: (v) { if (v != null) setState(() => _unitCtrl.text = v); },
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 提示文字：长按进入设置
+            Expanded(
+              child: GestureDetector(
+                onLongPress: _openQuantitySettings,
+                child: Text(
+                  t.tr('add.unit_hint_longpress'),
+                  style: TextStyle(color: color.withAlpha(120), fontSize: 11),
                 ),
               ),
             ),

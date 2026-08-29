@@ -38,6 +38,8 @@ class ExpenseRecord {
   final double amount;       // 金额（支出为负数，收入为正数）
   final int categoryId;      // 分类 ID
   final String? note;        // 备注
+  final double? quantity;    // 数量，null 表示未填写
+  final String? unit;        // 单位，null 表示未填写
   final int timestamp;       // Unix 时间戳（秒）
   final int createdAt;       // 创建时间
   final int updatedAt;       // 最后更新时间
@@ -47,6 +49,8 @@ class ExpenseRecord {
     required this.amount,
     required this.categoryId,
     this.note,
+    this.quantity,
+    this.unit,
     required this.timestamp,
     required this.createdAt,
     required this.updatedAt,
@@ -56,6 +60,8 @@ class ExpenseRecord {
     'amount': amount,
     'category_id': categoryId,
     'note': note,
+    'quantity': quantity,
+    'unit': unit,
     'timestamp': timestamp,
     'created_at': createdAt,
     'updated_at': updatedAt,
@@ -66,6 +72,8 @@ class ExpenseRecord {
     amount: (m['amount'] as num).toDouble(),
     categoryId: m['category_id'] as int,
     note: m['note'] as String?,
+    quantity: (m['quantity'] as num?)?.toDouble(),
+    unit: m['unit'] as String?,
     timestamp: m['timestamp'] as int,
     createdAt: m['created_at'] as int,
     updatedAt: m['updated_at'] as int,

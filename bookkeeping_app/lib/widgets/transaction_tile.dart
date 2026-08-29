@@ -11,6 +11,8 @@ class TransactionTile extends StatelessWidget {
   final double amount;          // 金额（负数=支出，正数=收入）
   final String categoryName;    // 分类名称
   final String note;            // 备注
+  final double? quantity;       // 数量，null 或 0 不显示
+  final String? unit;           // 单位
   final int timestamp;          // Unix 时间戳（秒）
   final String categoryType;    // 'expense' 或 'income'
   final bool isSelected;        // 是否选中（批量删除模式下）
@@ -19,8 +21,15 @@ class TransactionTile extends StatelessWidget {
   final VoidCallback? onLongPress;
 
   const TransactionTile({super.key, required this.id, required this.amount,
-    required this.categoryName, required this.note, required this.timestamp,
-    required this.categoryType, this.isSelected = false, this.showTime = true, this.onTap, this.onLongPress});
+    required this.categoryName, required this.note, this.quantity, this.unit,
+    required this.timestamp, required this.categoryType, this.isSelected = false,
+    this.showTime = true, this.onTap, this.onLongPress});
+
+  /// 去掉小数末尾多余的 0
+  static String _trimNum(double v) {
+    if (v == v.roundToDouble()) return v.round().toString();
+    return v.toString();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +40,8 @@ class TransactionTile extends StatelessWidget {
       DateTime.fromMillisecondsSinceEpoch(timestamp * 1000));
     // 翻译内置分类名（如 其他支出 → Other expenses）
     final displayName = AppTranslations.of(context).trCategory(categoryName);
+    // 数量/单位（数量为空或 0 时不显示），用淡红/淡绿显示在副标题
+    final qty = (quantity == null || quantity! <= 0) ? '' : ' ×${_trimNum(quantity!)}${unit ?? ''}';
 
     return Container(
       // 选中时绘制外发光边框
@@ -51,8 +62,13 @@ class TransactionTile extends StatelessWidget {
               style: TextStyle(color: color, fontWeight: FontWeight.bold)),
           ),
           title: Text(displayName, style: const TextStyle(fontWeight: FontWeight.w500)),
-          subtitle: note.isNotEmpty
-              ? Text(note, maxLines: null, style: TextStyle(color: Colors.grey.shade600, fontSize: 13))
+          subtitle: (note.isNotEmpty || qty.isNotEmpty)
+              ? Text.rich(TextSpan(children: [
+                  if (note.isNotEmpty)
+                    TextSpan(text: note, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                  if (qty.isNotEmpty)
+                    TextSpan(text: qty, style: TextStyle(color: color.withAlpha(200), fontSize: 13)),
+                ]), maxLines: null)
               : (showTime ? Text(timeStr, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)) : null),
           trailing: Text('$sign¥${amount.abs().toStringAsFixed(2)}',
             style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 16)),

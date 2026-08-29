@@ -3,7 +3,7 @@
 /// 提供 CRUD、按月份/年份查询、汇总统计、关键词搜索等功能。
 ///
 /// 数据库文件路径：getApplicationDocumentsDirectory()/bookkeeping.db
-/// 当前 Schema 版本：5（v4→v5 新增 default_note 字段）
+/// 当前 Schema 版本：6（v5→v6 新增 quantity/unit 字段）
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:sqflite/sqflite.dart';
@@ -28,7 +28,7 @@ class AppDatabase {
     final path = p.join(dir.path, 'bookkeeping.db');
     return openDatabase(
       path,
-      version: 5,  // 当前 Schema 版本
+      version: 6,  // 当前 Schema 版本
       onUpgrade: (db, oldV, newV) async {
         // v1 → v2: 删除重复的"其他"支出分类
         if (oldV < 2) {
@@ -56,6 +56,11 @@ class AppDatabase {
         if (oldV < 5) {
           await db.execute('ALTER TABLE categories ADD COLUMN default_note TEXT');
         }
+        // v5 → v6: 新增 quantity/unit 字段
+        if (oldV < 6) {
+          await db.execute('ALTER TABLE transactions ADD COLUMN quantity REAL');
+          await db.execute('ALTER TABLE transactions ADD COLUMN unit TEXT');
+        }
       },
       onCreate: (db, version) async {
         // 建表：categories（分类）
@@ -76,6 +81,8 @@ class AppDatabase {
             amount REAL NOT NULL,
             category_id INTEGER NOT NULL REFERENCES categories(id),
             note TEXT,
+            quantity REAL,
+            unit TEXT,
             timestamp INTEGER NOT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
@@ -170,6 +177,8 @@ class AppDatabase {
     required double amount,
     required int categoryId,
     String? note,
+    double? quantity,
+    String? unit,
     required int timestamp,
   }) async {
     final db = await database;
@@ -178,6 +187,8 @@ class AppDatabase {
       'amount': amount,
       'category_id': categoryId,
       'note': note,
+      'quantity': quantity,
+      'unit': unit,
       'timestamp': timestamp,
       'created_at': now,
       'updated_at': now,
@@ -185,12 +196,17 @@ class AppDatabase {
   }
 
   /// 更新交易记录（只更新非 null 的字段）
-  Future<int> updateTransaction(int id, {double? amount, int? categoryId, String? note, int? timestamp}) async {
+  /// [quantity] / [unit] 使用 [_UNSET] 哨兵区分"不修改"与"清空为 null"
+  static const _UNSET = Object();
+  Future<int> updateTransaction(int id, {double? amount, int? categoryId, String? note,
+      Object? quantity = _UNSET, Object? unit = _UNSET, int? timestamp}) async {
     final db = await database;
     final values = <String, dynamic>{};
     if (amount != null) values['amount'] = amount;
     if (categoryId != null) values['category_id'] = categoryId;
     if (note != null) values['note'] = note;
+    if (quantity != _UNSET) values['quantity'] = quantity as double?;
+    if (unit != _UNSET) values['unit'] = unit as String?;
     if (timestamp != null) values['timestamp'] = timestamp;
     values['updated_at'] = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     return db.update('transactions', values, where: 'id = ?', whereArgs: [id]);

@@ -19,6 +19,10 @@ class SettingsService {
   static const _iconList = 'icon_list';
   static const _currentIcon = 'current_icon';
   static const _language = 'language';
+  static const _stepInterval = 'step_interval';      // 数量增减步长
+  static const _defaultUnit = 'default_unit';         // 默认单位
+  static const _defaultQuantity = 'default_quantity'; // 默认数量
+  static const _units = 'units_list';                 // 单位列表（有序）
   static const int maxIcons = 10;        // 最多保留 10 个自定义图标
   static const int maxApiConfigs = 10;   // 最多保留 10 个 API 配置预设
 
@@ -44,6 +48,31 @@ class SettingsService {
   // ── 语言 ──
   String get language => _prefs.getString(_language) ?? 'zh';
   set language(String v) => _prefs.setString(_language, v);
+
+  // ── 数量控件设置 ──
+  double get stepInterval => _prefs.getDouble(_stepInterval) ?? 1.0;
+  set stepInterval(double v) => _prefs.setDouble(_stepInterval, v);
+
+  String get defaultUnit => _prefs.getString(_defaultUnit) ?? '个';
+  set defaultUnit(String v) => _prefs.setString(_defaultUnit, v);
+
+  /// 单位列表（有序，默认第一个为默认单位）
+  List<String> get units {
+    final raw = _prefs.getString(_units);
+    if (raw == null) return ['个', '件', '斤', '份', '次', '包'];
+    final list = (jsonDecode(raw) as List).cast<String>();
+    return list.isEmpty ? ['个'] : list;
+  }
+  set units(List<String> v) => _prefs.setString(_units, jsonEncode(v));
+
+  double? get defaultQuantity {
+    final v = _prefs.getDouble(_defaultQuantity);
+    return (v == null || v <= 0) ? null : v;
+  }
+  set defaultQuantity(double? v) {
+    if (v == null || v <= 0) _prefs.remove(_defaultQuantity);
+    else _prefs.setDouble(_defaultQuantity, v);
+  }
 
   // ── API 配置（当前使用的值） ──
   String get apiKey => _prefs.getString(_apiKey) ?? '';

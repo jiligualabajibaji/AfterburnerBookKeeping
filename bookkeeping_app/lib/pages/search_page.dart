@@ -107,6 +107,8 @@ class _SearchPageState extends State<SearchPage> {
           amount: t.transaction.amount,
           categoryName: t.category.name,
           note: t.transaction.note ?? '',
+          quantity: t.transaction.quantity,
+          unit: t.transaction.unit,
           timestamp: t.transaction.timestamp,
           categoryType: t.category.type,
           onTap: () {

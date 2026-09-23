@@ -148,24 +148,61 @@ class AppDatabase {
     await db.update('categories', {'sort_order': sortOrder}, where: 'id = ?', whereArgs: [id]);
   }
 
-  /// 删除分类：将该分类下的交易归入对应的兜底分类（支出→其他支出，收入→其他收入）后删除
-  Future<int> deleteCategory(int id) async {
+  /// 返回指定分类当前包含的交易记录数量。
+  Future<int> transactionCountForCategory(int categoryId) async {
     final db = await database;
-    // 先获取被删分类的类型
-    final cat = await db.query('categories', where: 'id = ?', whereArgs: [id]);
-    if (cat.isEmpty) return 0;
-    final type = cat.first['type'] as String? ?? 'expense';
-    final fallbackName = type == 'income' ? '其他收入' : '其他支出';
-    final fallbackType = type;
-    // 查找或创建兜底分类
-    final fallback = await db.query('categories',
-      where: 'name = ? AND type = ?', whereArgs: [fallbackName, fallbackType]);
-    final fallbackId = fallback.isNotEmpty ? fallback.first['id'] as int
-        : await db.insert('categories', {'name': fallbackName, 'type': fallbackType, 'sort_order': 0});
-    // 将被删分类下的交易重新分配给兜底分类
-    await db.update('transactions', {'category_id': fallbackId},
-      where: 'category_id = ?', whereArgs: [id]);
-    return db.delete('categories', where: 'id = ?', whereArgs: [id]);
+    return Sqflite.firstIntValue(await db.rawQuery(
+      'SELECT COUNT(*) FROM transactions WHERE category_id = ?',
+      [categoryId],
+    )) ?? 0;
+  }
+
+  /// 删除分类：先将该分类下的交易迁移到用户指定的同类型分类。
+  /// 未指定目标时保留原有行为，迁移到对应的兜底分类。
+  Future<int> deleteCategory(int id, {int? targetCategoryId, String? prependedNote}) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      final source = await txn.query('categories', where: 'id = ?', whereArgs: [id]);
+      if (source.isEmpty) return 0;
+      final type = source.first['type'] as String? ?? 'expense';
+
+      int destinationId;
+      if (targetCategoryId != null) {
+        if (targetCategoryId == id) {
+          throw ArgumentError('目标分类不能是被删除的分类');
+        }
+        final target = await txn.query('categories',
+          where: 'id = ? AND type = ?', whereArgs: [targetCategoryId, type]);
+        if (target.isEmpty) {
+          throw ArgumentError('目标分类不存在或收支类型不一致');
+        }
+        destinationId = targetCategoryId;
+      } else {
+        final fallbackName = type == 'income' ? '其他收入' : '其他支出';
+        final fallback = await txn.query('categories',
+          where: 'name = ? AND type = ?', whereArgs: [fallbackName, type]);
+        destinationId = fallback.isNotEmpty
+            ? fallback.first['id'] as int
+            : await txn.insert('categories', {
+                'name': fallbackName, 'type': type, 'sort_order': 0,
+              });
+      }
+
+      final notePrefix = prependedNote?.trim() ?? '';
+      if (notePrefix.isNotEmpty) {
+        await txn.rawUpdate('''
+          UPDATE transactions
+          SET note = CASE
+            WHEN note IS NULL OR TRIM(note) = '' THEN ?
+            ELSE ? || ' ' || note
+          END
+          WHERE category_id = ?
+        ''', [notePrefix, notePrefix, id]);
+      }
+      await txn.update('transactions', {'category_id': destinationId},
+        where: 'category_id = ?', whereArgs: [id]);
+      return txn.delete('categories', where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   // ═══════════════════════════════════════

@@ -5,6 +5,13 @@ import '../database/models.dart';
 import '../services/settings_service.dart';
 import '../services/translations.dart';
 
+class _CategoryDeleteChoice {
+  final int targetCategoryId;
+  final String prependedNote;
+
+  const _CategoryDeleteChoice(this.targetCategoryId, this.prependedNote);
+}
+
 /// 记一笔页面 — 手动录入/编辑交易记录。
 /// 支持：金额算式解析、中文数字解析、再记一笔连续录入、微信输入法兼容。
 class AddTransactionPage extends StatefulWidget {
@@ -12,7 +19,9 @@ class AddTransactionPage extends StatefulWidget {
   final bool isExpense;                    // 新建时默认为支出还是收入
   final TransactionWithCategory? editTxn;  // 不为 null 表示编辑已有记录
   final DateTime? defaultDate;             // 默认日期
-  const AddTransactionPage({super.key, required this.db, this.isExpense = true, this.editTxn, this.defaultDate});
+  final SettingsService? settings;         // 测试时可注入；正式运行使用本地设置
+  const AddTransactionPage({super.key, required this.db, this.isExpense = true,
+    this.editTxn, this.defaultDate, this.settings});
   @override State<AddTransactionPage> createState() => _AddTransactionPageState();
 }
 
@@ -24,7 +33,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   final _unitCtrl = TextEditingController();     // 单位输入
   final _amountFocus = FocusNode();              // 金额框焦点
   final _noteFocus = FocusNode();                // 备注框焦点
-  final _settings = SettingsService();           // 读取数量/单位设置
+  late final SettingsService _settings;          // 读取数量/单位设置
   double _stepInterval = 1.0;                    // 数量增减步长
 
   // ── 表单状态 ──
@@ -33,6 +42,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   DateTime _selectedDate = DateTime.now();  // 选中的日期
   bool _showTime = false;        // 日期选择是否包含时分
   List<Category> _allCats = [];  // 全部分类列表
+  Set<int> _collapsedCategoryIds = {};
+  bool _showCollapsedCategories = false;
 
   // ── 用户手动输入（用于无默认值分类间切换时恢复） ──
   String _manualAmount = '';
@@ -51,6 +62,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   @override
   void initState() {
     super.initState();
+    _settings = widget.settings ?? SettingsService();
     // 监听金额/备注输入，记录用户手动输入的内容
     _amountCtrl.addListener(() {
       if (!_settingDefault) _manualAmount = _amountCtrl.text;
@@ -62,8 +74,14 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     _settings.init().then((_) {
       if (!mounted) return;
       setState(() {
-        _stepInterval = _settings.stepInterval;
-        if (_unitCtrl.text.isEmpty) _unitCtrl.text = _settings.defaultUnit;
+        _collapsedCategoryIds = _settings.collapsedCategoryIds;
+        if (_categoryId != null && _collapsedCategoryIds.contains(_categoryId)) {
+          _showCollapsedCategories = true;
+        }
+        if (_unitCtrl.text.isEmpty || !_settings.units.contains(_unitCtrl.text)) {
+          _unitCtrl.text = _settings.defaultUnit;
+        }
+        _stepInterval = _settings.stepIntervalForUnit(_unitCtrl.text);
         final defQty = _settings.defaultQuantity;
         if (defQty != null && _quantityCtrl.text.isEmpty) _quantityCtrl.text = _trimNum(defQty);
       });
@@ -73,7 +91,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       // 编辑模式：从传入的交易数据填充表单
       _isExpense = edit.category.type == 'expense';
       _categoryId = edit.category.id;
-      _amountCtrl.text = edit.transaction.amount.abs().toString();
+      // 编辑整数金额时不显示无意义的小数点（如 12.0 → 12）。
+      _amountCtrl.text = _trimNum(edit.transaction.amount.abs());
       _noteCtrl.text = edit.transaction.note ?? '';
       _quantityCtrl.text = edit.transaction.quantity != null && edit.transaction.quantity! > 0
           ? _trimNum(edit.transaction.quantity!) : '';
@@ -112,8 +131,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   }
 
   /// 步进按钮（减号/加号）
-  Widget _stepBtn(IconData icon, VoidCallback onTap) {
+  Widget _stepBtn(IconData icon, VoidCallback onTap, {Key? key}) {
     return InkWell(
+      key: key,
       onTap: onTap,
       child: SizedBox(
         width: 44, height: 48,
@@ -123,7 +143,12 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   }
 
   /// 单个单位行（用于设置对话框中的自定义拖拽列表）
-  Widget _buildUnitRow(String unit, {required VoidCallback onDelete}) {
+  Widget _buildUnitRow(String unit, {
+    required double step,
+    required VoidCallback onEditStep,
+    required VoidCallback onDelete,
+  }) {
+    final s = AppTranslations.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -136,12 +161,51 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         contentPadding: EdgeInsets.zero,
         leading: const Icon(Icons.drag_handle, size: 18, color: Colors.grey),
         title: Text(unit, style: const TextStyle(fontSize: 14)),
-        trailing: IconButton(
-          icon: const Icon(Icons.close, size: 16, color: Colors.red),
-          onPressed: onDelete,
-        ),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(s.tr('add.unit_step', {'value': _trimNum(step)}),
+            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          IconButton(
+            key: ValueKey('edit-unit-step-$unit'),
+            icon: const Icon(Icons.edit, size: 16, color: Colors.blueGrey),
+            onPressed: onEditStep,
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16, color: Colors.red),
+            onPressed: onDelete,
+          ),
+        ]),
       ),
     );
+  }
+
+  Future<double?> _editUnitStep(String unit, double current) async {
+    final s = AppTranslations.of(context);
+    var input = _trimNum(current);
+    final raw = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.tr('add.unit_step_title', {'unit': unit})),
+        content: TextFormField(
+          initialValue: input,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(labelText: s.tr('add.step_interval')),
+          onChanged: (value) { input = value; },
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.tr('home.cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, input.trim()),
+            child: Text(s.tr('add.rename_confirm'))),
+        ],
+      ),
+    );
+    if (raw == null) return null;
+    final value = double.tryParse(raw);
+    if (value == null || value <= 0) {
+      _showTopSnack(s.tr('add.error_amount_invalid'));
+      return null;
+    }
+    return double.parse(value.toStringAsFixed(2));
   }
 
   /// 数量加减
@@ -149,17 +213,26 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     final text = _quantityCtrl.text.trim();
     final cur = text.isEmpty ? 0.0 : (double.tryParse(text) ?? 0.0);
     final next = cur + delta;
-    if (next < 0) return;  // 不允许负数
+    if (next < 0) {
+      // 当前数量小于步长时，减号将正数归零，而不是保持不变。
+      if (delta < 0 && cur > 0) {
+        _quantityCtrl.text = '0';
+      }
+      return;  // 不允许负数
+    }
     _quantityCtrl.text = _trimNum(double.parse(next.toStringAsFixed(2)));
   }
 
   /// 长按提示文字 → 打开数量/单位设置
   Future<void> _openQuantitySettings() async {
     final s = AppTranslations.of(context);
-    final stepCtrl = TextEditingController(text: _trimNum(_stepInterval));
     final qtyCtrl = TextEditingController(text: _settings.defaultQuantity != null ? _trimNum(_settings.defaultQuantity!) : '');
     final newUnitCtrl = TextEditingController();
     final unitList = List<String>.from(_settings.units);
+    final unitSteps = Map<String, double>.from(_settings.unitStepIntervals);
+    for (final unit in unitList) {
+      unitSteps.putIfAbsent(unit, () => 1.0);
+    }
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -169,12 +242,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           content: SizedBox(
             width: double.maxFinite,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                TextField(
-                  controller: stepCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(labelText: s.tr('add.step_interval'), isDense: true),
-                ),
-                const SizedBox(height: 12),
                 TextField(
                   controller: qtyCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -202,10 +269,32 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                           axis: Axis.vertical,
                           feedback: Material(
                             color: Colors.transparent,
-                            child: Opacity(opacity: 0.9, child: _buildUnitRow(unitList[i], onDelete: () => setDiaState(() { unitList.remove(unitList[i]); if (unitList.isEmpty) unitList.add('个'); }))),
+                            child: Opacity(opacity: 0.9, child: _buildUnitRow(
+                              unitList[i], step: unitSteps[unitList[i]] ?? 1,
+                              onEditStep: () {}, onDelete: () {},
+                            )),
                           ),
-                          childWhenDragging: Opacity(opacity: 0.3, child: _buildUnitRow(unitList[i], onDelete: () => setDiaState(() { unitList.remove(unitList[i]); if (unitList.isEmpty) unitList.add('个'); }))),
-                          child: _buildUnitRow(unitList[i], onDelete: () => setDiaState(() { unitList.remove(unitList[i]); if (unitList.isEmpty) unitList.add('个'); })),
+                          childWhenDragging: Opacity(opacity: 0.3, child: _buildUnitRow(
+                            unitList[i], step: unitSteps[unitList[i]] ?? 1,
+                            onEditStep: () {}, onDelete: () {},
+                          )),
+                          child: _buildUnitRow(
+                            unitList[i],
+                            step: unitSteps[unitList[i]] ?? 1,
+                            onEditStep: () async {
+                              final unit = unitList[i];
+                              final value = await _editUnitStep(unit, unitSteps[unit] ?? 1);
+                              if (value != null) setDiaState(() => unitSteps[unit] = value);
+                            },
+                            onDelete: () => setDiaState(() {
+                              final removed = unitList.removeAt(i);
+                              unitSteps.remove(removed);
+                              if (unitList.isEmpty) {
+                                unitList.add('个');
+                                unitSteps['个'] = 1;
+                              }
+                            }),
+                          ),
                         ),
                       ),
                   ]),
@@ -222,7 +311,10 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                     onPressed: () {
                       final v = newUnitCtrl.text.trim();
                       if (v.isNotEmpty && !unitList.contains(v)) {
-                        setDiaState(() => unitList.add(v));
+                        setDiaState(() {
+                          unitList.add(v);
+                          unitSteps[v] = 1;
+                        });
                         newUnitCtrl.clear();
                       }
                     },
@@ -234,17 +326,16 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.tr('home.cancel'))),
             FilledButton(onPressed: () {
-              final step = double.tryParse(stepCtrl.text.trim());
-              if (step != null && step > 0) {
-                _settings.stepInterval = step;
-                _stepInterval = step;
-              }
               _settings.units = unitList;
+              _settings.unitStepIntervals = {
+                for (final unit in unitList) unit: unitSteps[unit] ?? 1,
+              };
               _settings.defaultUnit = unitList.first;
               final qty = double.tryParse(qtyCtrl.text.trim());
               _settings.defaultQuantity = (qty == null || qty <= 0) ? null : qty;
               // 同步当前表单
               _unitCtrl.text = _settings.defaultUnit;
+              _stepInterval = _settings.stepIntervalForUnit(_unitCtrl.text);
               final defQty = _settings.defaultQuantity;
               if (defQty != null && _quantityCtrl.text.isEmpty) _quantityCtrl.text = _trimNum(defQty);
               setState(() {});
@@ -270,6 +361,12 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   /// 过滤出当前类型（支出/收入）下的分类
   List<Category> get _filteredCats =>
       _allCats.where((c) => c.type == (_isExpense ? 'expense' : 'income')).toList();
+
+  List<Category> get _visibleCats =>
+      _filteredCats.where((c) => !_collapsedCategoryIds.contains(c.id)).toList();
+
+  List<Category> get _collapsedCats =>
+      _filteredCats.where((c) => _collapsedCategoryIds.contains(c.id)).toList();
 
   /// 查找当前选中的分类对象
   Category? _findSelectedCategory() =>
@@ -488,6 +585,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       final defQty = _settings.defaultQuantity;
       if (defQty != null) _quantityCtrl.text = _trimNum(defQty);
       _unitCtrl.text = _settings.defaultUnit;
+      _stepInterval = _settings.stepIntervalForUnit(_unitCtrl.text);
       _showTime = false;
       _amountFocus.unfocus();
       _noteFocus.unfocus();
@@ -516,19 +614,52 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       ),
       child: Scaffold(
         appBar: AppBar(
-          title: Text(t.tr('add.title')),
-          actions: [
-            // 右上角"再记一笔"按钮
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilledButton.icon(
-                icon: const Icon(Icons.add_circle_outline, size: 16),
-                label: Text(t.tr('add.add_another')),
-                style: FilledButton.styleFrom(backgroundColor: color),
-                onPressed: () => _save(stay: true),
+          titleSpacing: 0,
+          title: Row(children: [
+            Expanded(
+              child: Center(child: Text(
+                t.tr('add.title'),
+                key: const ValueKey('add-page-title'),
+              )),
+            ),
+            Expanded(
+              child: Center(
+                child: OutlinedButton(
+                  key: const ValueKey('save-return-button'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: color,
+                    side: BorderSide(color: color),
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  ),
+                  onPressed: () => _save(stay: false),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.save, size: 16),
+                    const SizedBox(width: 4),
+                    Text(t.tr('add.save_return')),
+                  ]),
+                ),
               ),
             ),
-          ],
+            Expanded(
+              child: Center(
+                child: FilledButton(
+                  key: const ValueKey('add-another-button'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: color,
+                    minimumSize: Size.zero,
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                  ),
+                  onPressed: () => _save(stay: true),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.add_circle_outline, size: 16),
+                    const SizedBox(width: 4),
+                    Text(t.tr('add.add_another')),
+                  ]),
+                ),
+              ),
+            ),
+          ]),
         ),
         body: Listener(
           // 触摸前记录焦点状态，用于微信输入法键盘类型切换
@@ -555,6 +686,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               const SizedBox(width: 16),
               Expanded(
                 child: TextField(
+                  key: const ValueKey('amount-input'),
                   controller: _amountCtrl,
                   focusNode: _amountFocus,
                   keyboardType: TextInputType.number,    // 数字键盘
@@ -660,9 +792,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                 border: Border.all(color: color.withAlpha(60)),
               ),
               child: Row(children: [
-                _stepBtn(Icons.remove, () => _changeQuantity(-_stepInterval)),
+                _stepBtn(Icons.remove, () => _changeQuantity(-_stepInterval),
+                  key: const ValueKey('quantity-minus')),
                 Expanded(
                   child: TextField(
+                    key: const ValueKey('quantity-input'),
                     controller: _quantityCtrl,
                     textAlign: TextAlign.center,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -670,7 +804,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                     onChanged: (_) => setState(() {}),
                   ),
                 ),
-                _stepBtn(Icons.add, () => _changeQuantity(_stepInterval)),
+                _stepBtn(Icons.add, () => _changeQuantity(_stepInterval),
+                  key: const ValueKey('quantity-plus')),
               ]),
             ),
             const SizedBox(width: 8),
@@ -686,13 +821,21 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
+                    key: const ValueKey('unit-dropdown'),
                     value: _unitCtrl.text.isNotEmpty && _unitOptions.contains(_unitCtrl.text)
                         ? _unitCtrl.text : _unitOptions.first,
                     isExpanded: true,
                     icon: Icon(Icons.arrow_drop_down, size: 20, color: color),
                     style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14),
                     items: _unitOptions.map((u) => DropdownMenuItem(value: u, child: Text(u, overflow: TextOverflow.ellipsis))).toList(),
-                    onChanged: (v) { if (v != null) setState(() => _unitCtrl.text = v); },
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() {
+                          _unitCtrl.text = v;
+                          _stepInterval = _settings.stepIntervalForUnit(v);
+                        });
+                      }
+                    },
                   ),
                 ),
               ),
@@ -750,6 +893,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       child: SizedBox(width: 10, height: 10, child: Icon(Icons.lock, size: 9, color: color.withAlpha(150))),
                     ),
                     TextSpan(text: t.tr('add.category_hint_protected')),
+                    TextSpan(text: '  · ${t.tr('add.category_hint_collapsed')}'),
                   ],
                 ),
               )),
@@ -757,26 +901,22 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             const SizedBox(height: 8),
             _allCats.isEmpty
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-              : Wrap(spacing: 8, runSpacing: 8,
-                  children: [
-                    ..._filteredCats.map((c) => _buildCatChip(c, color)),
+              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    ..._visibleCats.map((c) => _buildCatChip(c, color)),
+                    if (_collapsedCats.isNotEmpty) _buildCollapsedCatChip(),
                     _buildAddCatChip(color),
                   ]),
-            const SizedBox(height: 32),
-
-            // ── 底部保存按钮 ──
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.save, size: 18),
-                label: Text(t.tr('add.save_return')),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: color, side: BorderSide(color: color),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: () => _save(stay: false),
-              ),
-            ),
+                  if (_showCollapsedCategories && _collapsedCats.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _collapsedCats.map((c) => _buildCatChip(c, color)).toList(),
+                      ),
+                    ),
+                ]),
             SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
           ]),
         ),
@@ -835,23 +975,68 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     );
   }
 
-  /// 构建单个分类选择按钮
+  /// 折叠分类入口。仅响应点击展开/收起，长按没有任何操作。
+  Widget _buildCollapsedCatChip() {
+    return GestureDetector(
+      key: const ValueKey('collapsed-categories-button'),
+      onTap: () => setState(() {
+        _showCollapsedCategories = !_showCollapsedCategories;
+      }),
+      onLongPress: () {},
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey.shade400),
+        ),
+        child: Text('...', style: TextStyle(
+          color: Colors.grey.shade800,
+          fontSize: 15,
+          fontWeight: FontWeight.bold,
+        )),
+      ),
+    );
+  }
+
+  /// 构建单个分类选择按钮（含默认备注/默认金额，宽度由分类名决定）
   Widget _buildCatChip(Category c, Color color) {
     final selected = _categoryId == c.id;
     // 是否为不可删除的默认分类（兜底分类）
     final isProtected = c.name == '其他支出' || c.name == '其他收入';
     final lockColor = c.type == 'expense' ? Colors.red : Colors.green;
+    final displayName = AppTranslations.of(context).trCategory(c.name);
+    final categoryStyle = TextStyle(
+      fontSize: 15,
+      height: 1,
+      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+      color: selected ? color : null,
+    );
+    final hasNote = c.defaultNote?.trim().isNotEmpty == true;
+    final hasAmount = c.defaultAmount != null;
+    // 依据分类名测量按钮宽度；默认备注/金额不得撑宽按钮
+    final namePainter = TextPainter(
+      text: TextSpan(text: displayName, style: categoryStyle),
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    const hPad = 16.0;
+    final chipWidth = (namePainter.width + hPad * 2 + (isProtected ? 16 : 0) + 4)
+        .clamp(60.0, MediaQuery.sizeOf(context).width - 32)
+        .toDouble();
+    // 所有分类按钮高度统一
+    const chipHeight = 42.0;
+    final miniStyle = TextStyle(color: Colors.grey.shade700, fontSize: 9, height: 1.0);
     return GestureDetector(
       onTap: () {
         setState(() { _categoryId = c.id; });
-        // 金额
-        if (c.defaultAmount != null) {
-          _settingDefault = true;
-          _amountCtrl.text = c.defaultAmount.toString();
-          _settingDefault = false;
-        } else {
-          _amountCtrl.text = _manualAmount;
-        }
+        // 金额：用户已经输入时始终保留；尚未输入时才应用分类默认值。
+        _settingDefault = true;
+        _amountCtrl.text = _manualAmount.trim().isNotEmpty
+            ? _manualAmount
+            : (c.defaultAmount?.toString() ?? '');
+        _settingDefault = false;
         // 备注
         _settingDefault = true;
         _noteCtrl.text = c.defaultNote ?? _manualNote;
@@ -861,7 +1046,10 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           ? null
           : () => _showCategoryOptions(c),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        key: ValueKey('category-chip-${c.id}'),
+        width: chipWidth,
+        height: chipHeight,
+        padding: const EdgeInsets.symmetric(horizontal: hPad, vertical: 2),
         decoration: BoxDecoration(
           color: selected ? color.withAlpha(30) : Colors.grey.withAlpha(25),
           borderRadius: BorderRadius.circular(20),
@@ -870,18 +1058,42 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             width: selected ? 1.5 : 1,
           ),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (isProtected)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Icon(Icons.lock, size: 12, color: lockColor),
-            ),
-          Text(AppTranslations.of(context).trCategory(c.name), style: TextStyle(
-            fontSize: 15,
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            color: selected ? color : null,
-          )),
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,  // 内容垂直居中：仅有备注时名字下移，仅有金额时名字上移
+          children: [
+            // 默认备注（分类名上方）
+            if (hasNote)
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.notes, size: 9, color: Colors.blue),
+                const SizedBox(width: 2),
+                Flexible(child: Text(c.defaultNote!.trim(),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: miniStyle)),
+              ]),
+            // 分类名
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              if (isProtected)
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Icon(Icons.lock, size: 12, color: lockColor),
+                ),
+              Flexible(child: Text(
+                displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: categoryStyle,
+              )),
+            ]),
+            // 默认金额（分类名下方）
+            if (hasAmount)
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.attach_money, size: 9, color: Colors.amber.shade700),
+                const SizedBox(width: 2),
+                Flexible(child: Text(_trimNum(c.defaultAmount!),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: miniStyle)),
+              ]),
+          ],
+        ),
       ),
     );
   }
@@ -896,19 +1108,19 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         title: Text(s.trCategory(c.name)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
-            leading: const Icon(Icons.attach_money, color: Colors.orange),
+            leading: Icon(Icons.attach_money, color: Colors.amber.shade700),
             title: Text(s.tr('add.default_amount')),
             subtitle: Text(hint, style: const TextStyle(fontSize: 12)),
             onTap: () { Navigator.pop(ctx, 'default'); },
           ),
           ListTile(
-            leading: const Icon(Icons.notes, color: Colors.blueGrey),
+            leading: const Icon(Icons.notes, color: Colors.blue),
             title: Text(s.tr('add.default_note')),
             subtitle: Text(c.defaultNote ?? s.tr('add.default_amount_none'), style: const TextStyle(fontSize: 12)),
             onTap: () { Navigator.pop(ctx, 'note'); },
           ),
           ListTile(
-            leading: const Icon(Icons.edit, color: Colors.blue),
+            leading: const Icon(Icons.edit, color: Colors.purple),
             title: Text(s.tr('add.rename')),
             onTap: () { Navigator.pop(ctx, 'rename'); },
           ),
@@ -916,6 +1128,16 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             leading: const Icon(Icons.swap_vert, color: Colors.teal),
             title: Text(s.tr('add.sort')),
             onTap: () { Navigator.pop(ctx, 'sort'); },
+          ),
+          ListTile(
+            leading: Icon(
+              _collapsedCategoryIds.contains(c.id) ? Icons.unfold_more : Icons.more_horiz,
+              color: Colors.blueGrey,
+            ),
+            title: Text(s.tr(_collapsedCategoryIds.contains(c.id)
+                ? 'add.expand_category'
+                : 'add.collapse_category')),
+            onTap: () { Navigator.pop(ctx, 'collapse'); },
           ),
           ListTile(
             leading: const Icon(Icons.delete, color: Colors.red),
@@ -933,9 +1155,28 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       await _renameCategory(c);
     } else if (action == 'sort') {
       await _showCategorySorter();
+    } else if (action == 'collapse') {
+      await _toggleCategoryCollapsed(c);
     } else if (action == 'delete') {
       await _deleteCategory(c);
     }
+  }
+
+  Future<void> _toggleCategoryCollapsed(Category c) async {
+    if (c.id == null) return;
+    final willCollapse = !_collapsedCategoryIds.contains(c.id);
+    await _settings.setCategoryCollapsed(c.id!, willCollapse);
+    if (!mounted) return;
+    setState(() {
+      if (willCollapse) {
+        _collapsedCategoryIds.add(c.id!);
+        if (_categoryId == c.id) {
+          _categoryId = _visibleCats.firstOrNull?.id;
+        }
+      } else {
+        _collapsedCategoryIds.remove(c.id!);
+      }
+    });
   }
 
   /// 设置分类默认金额
@@ -1089,28 +1330,120 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     }
   }
 
-  /// 删除分类 — 确认后将分类下的交易归入"其他支出/其他收入"后删除
+  /// 删除分类 — 用户选择同类型目标分类后迁移全部记录并删除。
   Future<void> _deleteCategory(Category c) async {
     final s = AppTranslations.of(context);
-    final ok = await showDialog<bool>(
+    final targets = _allCats
+        .where((candidate) => candidate.type == c.type && candidate.id != c.id && candidate.id != null)
+        .toList();
+    if (targets.isEmpty) return;
+    final fallbackName = c.type == 'income' ? '其他收入' : '其他支出';
+    int targetId = targets
+        .firstWhere((candidate) => candidate.name == fallbackName, orElse: () => targets.first)
+        .id!;
+    var prependedNote = '';
+    final choice = await showDialog<_CategoryDeleteChoice>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(s.tr('add.delete_category_title', {'name': s.trCategory(c.name)})),
-        content: Text(s.tr('add.delete_category_body', {'name': s.trCategory(c.name)})),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(s.tr('add.delete_category_body', {'name': s.trCategory(c.name)})),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<int>(
+            initialValue: targetId,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: s.tr('add.move_records_to'),
+              border: const OutlineInputBorder(),
+            ),
+            items: targets.map((target) => DropdownMenuItem<int>(
+              value: target.id,
+              child: Text(s.trCategory(target.name), overflow: TextOverflow.ellipsis),
+            )).toList(),
+            onChanged: (value) { if (value != null) targetId = value; },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            onChanged: (value) { prependedNote = value; },
+            decoration: InputDecoration(
+              labelText: s.tr('add.prepend_note'),
+              hintText: s.tr('add.prepend_note_hint'),
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.tr('home.cancel'))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.tr('home.cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => Navigator.pop(ctx,
+              _CategoryDeleteChoice(targetId, prependedNote.trim())),
             child: Text(s.tr('add.confirm_delete')),
           ),
         ],
       ),
     );
-    if (ok == true && c.id != null) {
-      await widget.db.deleteCategory(c.id!);
+    if (choice != null && c.id != null) {
+      if (!mounted) return;
+      final transactionCount = await widget.db.transactionCountForCategory(c.id!);
+      if (!mounted) return;
+      final target = targets.firstWhere(
+        (candidate) => candidate.id == choice.targetCategoryId,
+      );
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          key: const ValueKey('confirm-category-delete-dialog'),
+          title: Text(s.tr('add.confirm_delete_category_title')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.tr('add.confirm_delete_category_name', {
+                'name': s.trCategory(c.name),
+              })),
+              const SizedBox(height: 8),
+              Text(s.tr('add.confirm_delete_category_count', {
+                'n': '$transactionCount',
+              })),
+              const SizedBox(height: 8),
+              Text(s.tr('add.confirm_delete_category_target', {
+                'name': s.trCategory(target.name),
+              })),
+              const SizedBox(height: 8),
+              Text(s.tr('add.confirm_delete_category_note', {
+                'note': choice.prependedNote.isEmpty
+                    ? s.tr('add.confirm_delete_category_no_note')
+                    : choice.prependedNote,
+              })),
+              const SizedBox(height: 16),
+              Text(s.tr('add.confirm_delete_category_warning')),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(s.tr('home.cancel')),
+            ),
+            FilledButton(
+              key: const ValueKey('confirm-category-delete-button'),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(s.tr('home.confirm_delete')),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      await widget.db.deleteCategory(
+        c.id!,
+        targetCategoryId: choice.targetCategoryId,
+        prependedNote: choice.prependedNote,
+      );
+      await _settings.setCategoryCollapsed(c.id!, false);
       final cats = await widget.db.allCategories();
       setState(() {
+        _collapsedCategoryIds.remove(c.id);
         _allCats = cats;
         // 如果删掉了当前选中的分类，自动选中第一个同类分类
         if (_categoryId == c.id) {

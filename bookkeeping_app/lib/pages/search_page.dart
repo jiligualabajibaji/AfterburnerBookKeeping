@@ -9,7 +9,8 @@ import 'add_transaction_page.dart';
 /// 位于底部导航栏的第三个 tab（流水→统计→搜索→设置）。
 class SearchPage extends StatefulWidget {
   final AppDatabase db;
-  const SearchPage({super.key, required this.db});
+  final ValueChanged<TransactionWithCategory> onJumpToTransaction;
+  const SearchPage({super.key, required this.db, required this.onJumpToTransaction});
   @override State<SearchPage> createState() => _SearchPageState();
 }
 
@@ -111,6 +112,10 @@ class _SearchPageState extends State<SearchPage> {
           unit: t.transaction.unit,
           timestamp: t.transaction.timestamp,
           categoryType: t.category.type,
+          onJump: () {
+            FocusScope.of(context).unfocus();
+            widget.onJumpToTransaction(t);
+          },
           onTap: () {
             // 点击跳转到编辑页面，编辑后重新搜索
             Navigator.push(context,
@@ -157,6 +162,11 @@ class _SearchPageState extends State<SearchPage> {
             _searchFieldChip(label: t.tr('search.field_note'), value: 'note'),
             const SizedBox(width: 6),
             _searchFieldChip(label: t.tr('search.field_amount'), value: 'amount'),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(t.tr('search.jump_hint'),
+                style: TextStyle(color: Colors.grey.shade400, fontSize: 10)),
+            ),
           ]),
         ),
         // ── 筛选栏：日期范围 + 收支类型 ──

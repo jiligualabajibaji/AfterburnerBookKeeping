@@ -23,6 +23,9 @@ class SettingsService {
   static const _defaultUnit = 'default_unit';         // 默认单位
   static const _defaultQuantity = 'default_quantity'; // 默认数量
   static const _units = 'units_list';                 // 单位列表（有序）
+  static const _unitStepIntervals = 'unit_step_intervals';
+  static const _collapsedCategoryIds = 'collapsed_category_ids';
+  static const _showLedgerIntegerDecimals = 'show_ledger_integer_decimals';
   static const int maxIcons = 10;        // 最多保留 10 个自定义图标
   static const int maxApiConfigs = 10;   // 最多保留 10 个 API 配置预设
 
@@ -49,6 +52,13 @@ class SettingsService {
   String get language => _prefs.getString(_language) ?? 'zh';
   set language(String v) => _prefs.setString(_language, v);
 
+  // ── 流水金额显示 ──
+  /// 是否为流水页中的金额统一显示两位小数；默认关闭。
+  bool get showLedgerFixedDecimals =>
+      _prefs.getBool(_showLedgerIntegerDecimals) ?? false;
+  set showLedgerFixedDecimals(bool v) =>
+      _prefs.setBool(_showLedgerIntegerDecimals, v);
+
   // ── 数量控件设置 ──
   double get stepInterval => _prefs.getDouble(_stepInterval) ?? 1.0;
   set stepInterval(double v) => _prefs.setDouble(_stepInterval, v);
@@ -65,6 +75,18 @@ class SettingsService {
   }
   set units(List<String> v) => _prefs.setString(_units, jsonEncode(v));
 
+  /// 各单位自己的数量步长；未配置的单位默认步长为 1。
+  Map<String, double> get unitStepIntervals {
+    final raw = _prefs.getString(_unitStepIntervals);
+    if (raw == null) return {};
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    return decoded.map((unit, value) => MapEntry(unit, (value as num).toDouble()));
+  }
+  set unitStepIntervals(Map<String, double> value) =>
+      _prefs.setString(_unitStepIntervals, jsonEncode(value));
+
+  double stepIntervalForUnit(String unit) => unitStepIntervals[unit] ?? 1.0;
+
   double? get defaultQuantity {
     final v = _prefs.getDouble(_defaultQuantity);
     return (v == null || v <= 0) ? null : v;
@@ -72,6 +94,26 @@ class SettingsService {
   set defaultQuantity(double? v) {
     if (v == null || v <= 0) _prefs.remove(_defaultQuantity);
     else _prefs.setDouble(_defaultQuantity, v);
+  }
+
+  // ── 分类折叠 ──
+  Set<int> get collapsedCategoryIds =>
+      (_prefs.getStringList(_collapsedCategoryIds) ?? const <String>[])
+          .map(int.tryParse)
+          .whereType<int>()
+          .toSet();
+
+  Future<void> setCategoryCollapsed(int categoryId, bool collapsed) async {
+    final ids = collapsedCategoryIds;
+    if (collapsed) {
+      ids.add(categoryId);
+    } else {
+      ids.remove(categoryId);
+    }
+    await _prefs.setStringList(
+      _collapsedCategoryIds,
+      ids.map((id) => id.toString()).toList(),
+    );
   }
 
   // ── API 配置（当前使用的值） ──

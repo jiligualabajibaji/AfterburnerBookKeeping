@@ -221,6 +221,19 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         ),
 
+        SwitchListTile(
+          key: const ValueKey('show-ledger-integer-decimals-switch'),
+          secondary: const Icon(Icons.numbers),
+          title: Text(t.tr('settings.show_ledger_integer_decimals')),
+          subtitle: Text(t.tr('settings.show_ledger_integer_decimals_hint')),
+          value: widget.settings.showLedgerFixedDecimals,
+          onChanged: (value) {
+            widget.settings.showLedgerFixedDecimals = value;
+            setState(() {});
+            widget.onThemeChanged();
+          },
+        ),
+
         // ═══════════════════════════════════
         //  背景图
         // ═══════════════════════════════════
